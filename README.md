@@ -6,6 +6,14 @@ Luồng: Get → tự copy vào clipboard → đếm giây còn hiệu lực →
 
 **Source đã có cấu hình Vercel và đã qua kiểm tra build/unit test. Chưa deploy live hoặc kiểm thử đăng nhập tự động trên Vercel bằng tài khoản thật. HRM có thể từ chối trình duyệt server, yêu cầu CAPTCHA hoặc thay đổi giao diện; trong các trường hợp đó app báo lỗi, không vượt qua kiểm soát truy cập.**
 
+## Bản sửa 2.0.4
+
+- Đã đăng nhập bằng form bảo mật và đối chiếu menu HRM ngày 10/10/2026: một mục a.gen-pass trong menu tài khoản; nút tài khoản có data-hover="dropdown" và data-bs-toggle="dropdown". Bấm mở rồi chọn master đã nhận thông báo HRM sao chép thành công và timer hợp lệ. Không lưu tài khoản hoặc master vào source.
+- Sửa luồng mở menu: rê chuột bằng ElementHandle.hover, chờ tối đa 1,2 giây để menu mở; chỉ bấm nút tài khoản nếu mục master vẫn ẩn. Khi menu đã mở, không bấm toggle lần nữa. Việc click sau khi hover có thể đóng menu vừa mở; đây là nhánh được kiểm thử hồi quy, chưa xác nhận là nguyên nhân duy nhất trên Vercel.
+- Chromium dùng viewport desktop 1366 × 900 thay vì kích thước mặc định. Thêm chẩn đoán master_menu_hover, giữ master_menu_open và master_menu_visible.
+- Giữ popup có điều kiện, kiểm tra phiên bản frontend/server, copy và bộ đếm từ HRM. Footer, API và tên ZIP cùng v2.0.4.
+- Kiểm tra browser HRM tương tác thường không thay thế kiểm tra Chromium serverless trên Vercel. Chưa deploy hoặc xác minh clipboard backend bằng tài khoản thật trên Vercel.
+
 ## Bản sửa 2.0.3
 
 - Phiên bản X.Y.Z lấy từ package.json cho cả frontend và API. Footer hiển thị v2.0.3; sau khi bấm Get, hiển thị thêm phiên bản Server đã kiểm tra.
