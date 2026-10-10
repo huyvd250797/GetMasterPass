@@ -6,6 +6,40 @@ Luồng: Get → tự copy vào clipboard → đếm giây còn hiệu lực →
 
 **Source đã có cấu hình Vercel và đã qua kiểm tra build/unit test. Chưa deploy live hoặc kiểm thử đăng nhập tự động trên Vercel bằng tài khoản thật. HRM có thể từ chối trình duyệt server, yêu cầu CAPTCHA hoặc thay đổi giao diện; trong các trường hợp đó app báo lỗi, không vượt qua kiểm soát truy cập.**
 
+## Bản sửa 2.0.3
+
+- Phiên bản X.Y.Z lấy từ package.json cho cả frontend và API. Footer hiển thị v2.0.3; sau khi bấm Get, hiển thị thêm phiên bản Server đã kiểm tra.
+- GET /api/version chỉ trả phiên bản release, không đăng nhập HRM hoặc trả bí mật.
+- Trước mỗi yêu cầu lấy master, frontend xác nhận server cùng phiên bản. Nếu API version thiếu, lỗi hoặc không khớp thì báo lỗi và không gọi endpoint lấy master.
+- POST /api/master-password yêu cầu X-App-Version khớp release, kiểm tra trước khi đọc tài khoản hoặc mở browser. Mỗi phản hồi đều có version và header X-App-Version. Nếu deployment đổi trong lúc request chạy, frontend không copy response của phiên bản khác.
+- Giữ sửa menu isVisible và popup có điều kiện của v2.0.2. Chưa thay selector theo giao diện mới vì chưa hoàn tất kiểm tra HRM sau đăng nhập.
+- Tên ZIP là Master_Password_Web_v2.0.3.zip. Nội dung ZIP nằm ngay thư mục gốc: package.json, api/, lib/, public/, scripts/... Không bọc thêm một thư mục Master_Password_Web bên trong ZIP.
+
+Đọc DEPLOY.md để đưa bản này vào repo/deployment hiện tại. Source không tự thay commit, Root Directory hoặc Production domain của Vercel. Nếu cả website và API vẫn là bản cũ, chỉ source mới được deploy đúng mới thay được website đó.
+
+## Bản sửa 2.0.2
+
+- Popup hết hạn mật khẩu: chỉ bấm Đóng khi nút đang hiển thị; nếu popup không tồn tại hoặc đang ẩn thì bỏ qua ngay, không chờ popup xuất hiện. Khi có bấm Đóng, chờ nút ẩn trước khi tiếp tục.
+- Menu master: dùng isVisible thay cho boundingBox để kiểm tra trạng thái hiển thị. Phần tử visibility:hidden vẫn có thể có kích thước, nên bản cũ có thể bỏ qua mở menu rồi timeout. Đây là lỗi logic đã sửa; chưa xác minh đó là nguyên nhân duy nhất trên deployment thật.
+- Tách master_menu_open và master_menu_visible để biết lỗi ở thao tác mở menu hay chờ mục master hiển thị.
+- Hiển thị phiên bản ở footer, tự lấy từ package.json khi build Vercel hoặc chạy server local.
+
+Đã mở HRM trong browser kiểm tra: trang hiện yêu cầu đăng nhập. Phiên đăng nhập chưa được tiếp tục nên chưa đối chiếu lại menu sau đăng nhập trong lần kiểm tra này. Các selector menu giữ theo giao diện đã quan sát trước; bản sửa tập trung vào điều kiện hiển thị và lỗi timeout trong source.
+
+## Quy tắc phiên bản cho các lần cập nhật sau
+
+Dùng X.Y.Z: X cho thay đổi không tương thích; Y cho thêm tính năng tương thích; Z cho sửa lỗi. Mỗi bản giao source phải tăng phiên bản; tên ZIP phải là Master_Password_Web_vX.Y.Z.zip và khớp phiên bản source/giao diện. package.json là nguồn duy nhất cho phiên bản hiển thị trong app; package-lock.json phải khớp.
+
+Dùng một trong các lệnh trước khi build và đóng gói:
+
+```bash
+npm version patch --no-git-tag-version
+npm version minor --no-git-tag-version
+npm version major --no-git-tag-version
+```
+
+Chỉ chạy lệnh phù hợp cho lần cập nhật, không chạy cả ba. Build/dev kiểm tra định dạng X.Y.Z và tự đưa phiên bản vào footer. Sau deploy, nhìn footer theo phiên bản package.json để xác nhận đang mở đúng bản sửa.
+
 ## Bản sửa 2.0.1 — lỗi HRM_UNAVAILABLE
 
 Phản hồi cũ chỉ có HRM_UNAVAILABLE không cho biết bước hỏng. Bản này:

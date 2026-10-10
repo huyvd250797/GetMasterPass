@@ -2,20 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectMaster,readMasterFromHrm} from './lib/hrm-browser.mjs';
 
-function makePage({blocked=false,loginFails=false}={}) {
-  let evaluations=0;const actions=[];
+function makePage({blocked=false,loginFails=false,popupState="absent",masterVisible=false}={}) {
+  let evaluations=0;const actions=[],waits=[];
   const profile='.dropdown-user > a.dropdown-toggle';
   const page={
     setDefaultTimeout(){},setDefaultNavigationTimeout(){},async goto(url){actions.push('goto');assert.equal(url,'https://hrm.ascvn.com.vn/HeThong');},
     url:()=> 'https://hrm.ascvn.com.vn/HeThong',
     async evaluate(){evaluations++;if(evaluations===1||evaluations===2)return blocked;if(evaluations===3){actions.push('clearClipboard');return;}
       actions.push('readMaster');return {password:'TEST-ONLY',seconds:90};},
-    async $(s){if(s==='input[name="UserName"]')return {};if(s==='a.gen-pass')return {boundingBox:async()=>null};return null;},
+    async $(s){if(s==='input[name="UserName"]')return {};if(s==='a.gen-pass')return {boundingBox:async()=>({width:100,height:20}),isVisible:async()=>masterVisible};if(s==='#popupAddUpdatePassword #close'&&popupState!=='absent')return {isVisible:async()=>popupState==='visible',click:async()=>actions.push('closeNotice')};return null;},
     locator(s){return {fill:async()=>actions.push(s==='input[name="UserName"]'?'fillUsername':'fillPassword'),click:async()=>actions.push(s===profile?'openMenu':'getMaster')};},
     async waitForFunction(){return {asElement:()=>({click:async()=>actions.push('submitLogin')})};},
-    async waitForSelector(s){if(loginFails&&s===profile)throw new Error('TEST failure');},async bringToFront(){}
+    async waitForSelector(s,options){waits.push({selector:s,...options});if(loginFails&&s===profile)throw new Error('TEST failure');},async bringToFront(){}
   };
-  return {page,actions};
+  return {page,actions,waits};
 }
 test('normal login uses account fields then the observed HRM master copy action',async()=>{
   const {page,actions}=makePage();const result=await collectMaster(page,{HRM_USERNAME:'TEST-ONLY',HRM_PASSWORD:'TEST-ONLY'});
@@ -64,4 +64,41 @@ test('browser closes if permission setup fails',async()=>{
   await assert.rejects(readMasterFromHrm({LOCAL_CHROME_PATH:'/test'},
     {loadPuppeteer:async()=>({default:{launch:async()=>browser}})}),e=>e.code==='BROWSER_SETUP_FAILED'&&e.stage==='browser_permissions');
   assert.equal(closed,true);
+});
+
+test('an absent or hidden expired-password notice is skipped without waiting',async()=>{
+  for (const popupState of ['absent','hidden']) {
+    const {page,actions,waits}=makePage({popupState});
+    await collectMaster(page,{});
+    assert.ok(!actions.includes('closeNotice'));
+    assert.ok(!waits.some(w=>w.selector==='#popupAddUpdatePassword #close'));
+    assert.ok(actions.includes('getMaster'));
+  }
+});
+test('a visible expired-password notice closes before opening the master menu',async()=>{
+  const {page,actions,waits}=makePage({popupState:'visible'});
+  await collectMaster(page,{});
+  assert.equal(actions.filter(a=>a==='closeNotice').length,1);
+  assert.ok(actions.indexOf('closeNotice')<actions.indexOf('openMenu'));
+  assert.ok(waits.some(w=>w.selector==='#popupAddUpdatePassword #close'&&w.hidden===true));
+});
+test('a hidden master with a bounding box still opens the account menu',async()=>{
+  const {page,actions}=makePage({masterVisible:false});
+  await collectMaster(page,{});
+  assert.equal(actions.filter(a=>a==='openMenu').length,1);
+  assert.ok(actions.indexOf('openMenu')<actions.indexOf('getMaster'));
+});
+test('an already visible master does not toggle the account menu closed',async()=>{
+  const {page,actions}=makePage({masterVisible:true});
+  await collectMaster(page,{});
+  assert.ok(!actions.includes('openMenu'));assert.ok(actions.includes('getMaster'));
+});
+test('menu open and visibility timeouts report distinct stages',async()=>{
+  const timeout=Object.assign(new Error('PRIVATE'),{name:'TimeoutError'});
+  const opening=makePage();const locator=opening.page.locator;
+  opening.page.locator=s=>s==='.dropdown-user > a.dropdown-toggle'?{click:async()=>{throw timeout;}}:locator(s);
+  await assert.rejects(collectMaster(opening.page,{}),e=>e.stage==='master_menu_open'&&e.reason==='TIMEOUT');
+  const visible=makePage();const wait=visible.page.waitForSelector;
+  visible.page.waitForSelector=(s,o)=>s==='a.gen-pass'?Promise.reject(timeout):wait(s,o);
+  await assert.rejects(collectMaster(visible.page,{}),e=>e.stage==='master_menu_visible'&&e.reason==='TIMEOUT');
 });

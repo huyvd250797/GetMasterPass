@@ -1,13 +1,13 @@
 {
   "name": "master-password-helper",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
     "start": "npm run dev",
     "build": "node scripts/build.mjs",
-    "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs"
+    "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs version-test.mjs"
   },
   "engines": {
     "node": "22.x"
