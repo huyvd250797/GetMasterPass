@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {handleMasterRequest} from './lib/master-api.mjs';
+const origin='https://master-test.invalid';
+const env={VERCEL:'1',HRM_USERNAME:'TEST-ONLY',HRM_PASSWORD:'TEST-ONLY'};
+const req=(options={})=>new Request(`${origin}/api/master-password`,{method:options.method||'POST',headers:{
+  Origin:origin,'X-Master-Request':'1',...options.headers
+}});
+test('cross-origin and GET requests are rejected',async()=>{
+  const reader=async()=>{throw new Error('must not run');};
+  assert.equal((await handleMasterRequest(req({method:'GET'}),{env,reader})).status,405);
+  assert.equal((await handleMasterRequest(req({headers:{Origin:'https://other.invalid'}}),{env,reader})).status,403);
+});
+test('missing credentials do not start a browser',async()=>{
+  const result=await handleMasterRequest(req(),{env:{...env,HRM_PASSWORD:''},reader:async()=>{throw new Error('must not run');}});
+  assert.equal(result.status,503);assert.deepEqual(await result.json(),{error:'NOT_CONFIGURED'});
+});
+test('successful request subtracts closing time, keeps original lifetime and disables cache',async()=>{
+  let now=100;
+  const result=await handleMasterRequest(req(),{env,clock:()=>now,reader:async()=>{
+    now=20300;return {password:'TEST-ONLY',remainingMs:120000,readAtMs:20000};
+  }});
+  assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'no-store');
+  assert.deepEqual(await result.json(),{password:'TEST-ONLY',remainingMs:119700,processingMs:20200});
+});
+test('blocked login and unexpected failures do not leak details',async()=>{
+  let result=await handleMasterRequest(req(),{env,reader:async()=>{throw Object.assign(new Error('PRIVATE DETAILS'),{code:'AUTH_BLOCKED'});}});
+  assert.equal(result.status,502);assert.deepEqual(await result.json(),{error:'AUTH_BLOCKED'});
+  result=await handleMasterRequest(req(),{env,reader:async()=>{throw new Error('PRIVATE PASSWORD COOKIE HTML');}});
+  assert.deepEqual(await result.json(),{error:'HRM_UNAVAILABLE'});
+});
+test('expired or overlong code lifetime is rejected',async()=>{
+  for (const remainingMs of [0,500,300001]) {
+    const result=await handleMasterRequest(req(),{env,reader:async()=>({password:'TEST-ONLY',remainingMs})});
+    assert.equal(result.status,502);assert.deepEqual(await result.json(),{error:'INVALID_RESPONSE'});
+  }
+});

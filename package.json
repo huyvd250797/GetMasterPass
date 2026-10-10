@@ -1,0 +1,14 @@
+{
+  "name": "master-password-helper",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
+    "start": "npm run dev",
+    "build": "node scripts/build.mjs",
+    "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs"
+  },
+  "engines": {"node": "22.x"},
+  "dependencies": {"@sparticuz/chromium":"153.0.0","puppeteer-core":"25.11.0"}
+}
