@@ -1,42 +1,47 @@
-# Master Password — v2.2.0
+# Master Password — v2.3.0
 
-App Vercel có đăng nhập bằng username/password riêng. Chỉ người được admin cấp tài khoản mới lấy được master từ HRM. Get tự copy mã và đếm thời gian hiệu lực; nút Copy lại xuất hiện trong thời gian còn hiệu lực.
+App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
 
-**Bắt đầu: đọc DEPLOY.md.** Bản này cần bốn biến mới ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET, DATABASE_URL và chạy database/schema.sql một lần trên Neon PostgreSQL; giữ hai biến HRM cũ.
+## Thay đổi 2.3.0
 
-## Chức năng
+- Get dùng RAM cache và cache mã hóa dùng chung trên Neon. Instance mới có thể lấy mã đang còn hiệu lực mà không mở Chromium/đăng nhập HRM. Các instance dùng lease trong DB để gộp lần đọc HRM khi đồng thời thiếu cache.
+- Bỏ lượt gọi `/api/version` trước mỗi Get. Server vẫn kiểm tra phiên bản trước HRM; response và footer giữ cùng phiên bản. Đường Get khi có cache hợp lệ cần ba lượt SQL: xác thực kèm cache, nhận quyền Get/ghi pending, kiểm tra lại phiên kèm ghi issued.
+- Get/copy thành công hiện toast tự ẩn sau 3,5 giây. Bỏ dòng kết nối HRM và câu “Lấy mật khẩu và copy ngay vào clipboard.” Lỗi vẫn hiển thị để người dùng xử lý. Clipboard thất bại không báo copy thành công và có ô copy thủ công.
+- User đổi mật khẩu của mình bằng mật khẩu hiện tại và mật khẩu mới 4–256 ký tự. Đổi thành công thu hồi mọi phiên của tài khoản và yêu cầu đăng nhập lại. Admin không được đổi mật khẩu qua UI hoặc endpoint này; sửa ADMIN_PASSWORD trên Vercel rồi deploy lại.
+- Lịch sử chỉ dành cho admin; API chặn user bằng 403. Admin xóa một dòng hoặc toàn bộ lịch sử Get qua hộp xác nhận. Xóa tất cả áp dụng cả dữ liệu ngoài bộ lọc; giữ pending chưa quá 65 giây. Không xóa LOGIN/LOGOUT, sự kiện tài khoản hoặc sự kiện xóa lịch sử.
+- Số lần Get và thống kê tính từ lịch sử còn giữ lại; xóa lịch sử làm giảm các số đếm này. Copy lại không gọi API Get và không tăng số lần Get.
 
-- Admin từ Vercel: tạo tài khoản có họ tên, username, mật khẩu; khóa/mở khóa; đặt lại mật khẩu; xem số lần Get từng người và lịch sử toàn bộ.
-- User: đăng nhập, Get master, xem lịch sử của chính mình, đăng xuất. Không đăng ký công khai, không có API sửa quyền admin.
-- Lịch sử: người yêu cầu, thời gian server, kết quả, thời gian hết hiệu lực, mã giao dịch; lọc người/ngày, phân trang 50 dòng. Hiển thị giờ Việt Nam.
-- Thống kê phân biệt yêu cầu và lần server đã trả mã. Tài khoản chưa có quyền truy cập bị từ chối trước khi chạy HRM. Giới hạn Get bị từ chối được ghi nhận thành yêu cầu denied của người dùng đã xác thực.
-- Không lưu master hoặc mật khẩu HRM trong DB/log; mật khẩu người dùng lưu scrypt với salt riêng (N=131072, r=8, p=1).
+## Luồng Get
 
-## Luồng và kiểm soát
+1. Kiểm tra Origin/header/phiên bản, cookie, CSRF và cấu hình. Đọc phiên còn hiệu lực, trạng thái user và auth_version cùng cache mã hóa trong một câu SQL.
+2. DB cấp quyền Get nguyên tử: một yêu cầu mỗi người tại một thời điểm, bắt đầu cách nhau ít nhất 10 giây; ghi pending riêng cho mỗi yêu cầu.
+3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, nhận lease 55 giây, kiểm tra lại cache rồi thực hiện luồng HRM hiện có: đăng nhập, đóng thông báo đổi mật khẩu nếu xuất hiện, hover menu rồi click khi cần, đọc clipboard/timer rồi đóng browser.
+4. Ghi cache mã hóa. Kiểm tra lại phiên/user và ghi issued trong cùng một câu SQL trước khi trả mã. Nếu phiên bị thu hồi trong lúc đọc HRM hoặc chưa ghi được audit thì không trả mã.
+5. Trừ thời gian đọc/đóng browser/SQL và truyền phản hồi khỏi hiệu lực. Client copy, hiện toast, đếm giây; hết hạn hoặc đăng xuất xóa mã khỏi bộ nhớ/ô thủ công. Clipboard hệ điều hành không tự xóa.
 
-1. POST /api/auth đăng nhập → kiểm tra tài khoản/rate limit → tạo token ngẫu nhiên mới, lưu SHA-256 token trong DB → cookie HttpOnly/Secure/SameSite=Strict trên HTTPS.
-2. GET /api/auth xác nhận phiên, cấp CSRF token; phiên tối đa 8 giờ.
-3. POST /api/master-password kiểm tra Origin/header/version, cookie, CSRF, tài khoản còn hoạt động và auth_version. Kiểm tra lặp lại sau công việc HRM.
-4. DB ghi pending và cấp khóa Get nguyên tử: một yêu cầu / người tại một thời điểm, cách ít nhất 10 giây. Mỗi yêu cầu mới có mã giao dịch riêng, không tự retry lấy mã.
-5. Dùng mã còn hiệu lực trong RAM của instance; nếu chưa có thì HRM login và menu hover → click khi cần → copy/read clipboard server + timer, giữ popup có điều kiện. Các yêu cầu đồng thời cùng tài khoản HRM chia sẻ một lần đọc, nhưng vẫn có phiên và audit riêng.
-6. DB ghi issued trước khi trả master. Nếu không xác nhận ghi được lịch sử thì không trả mã. Thời gian ghi DB/đóng browser/truyền phản hồi được trừ khỏi hiệu lực.
-7. Client copy rồi đếm giây; copy lại không tăng số Get. Hết hạn hoặc đăng xuất xóa mã trong bộ nhớ/ô copy. Clipboard hệ điều hành không tự xóa.
+`issued` là backend đã ghi nhận và chuẩn bị trả mã, không chứng minh trình duyệt đã nhận/copy. Mã đã copy ra ngoài app không thể bị thu hồi bằng cách khóa tài khoản. Nhật ký app xác định người yêu cầu, không chứng minh người sử dụng mã tại hệ thống khác.
 
-Khóa/mở khóa/đặt lại mật khẩu tăng auth_version, nên phiên cũ không dùng lại được. Thay mật khẩu/username admin hoặc SESSION_SECRET rồi redeploy thu hồi các phiên tương ứng. Giao diện kiểm tra phiên mỗi 30 giây khi đang mở; API kiểm tra mỗi yêu cầu. Không thể thu hồi một mã đã được người dùng copy ra ngoài app.
+## Cache và dữ liệu
 
-Lịch sử `issued` nghĩa là backend đã ghi nhận thành công và chuẩn bị trả response; không chứng minh browser nhận/copy được mã. Nếu function bị ngắt sau pending, dòng lịch sử quá 65 giây hiển thị Gián đoạn. Thống kê pending gồm cả các yêu cầu gián đoạn chưa hoàn tất. App không ghi IP hoặc fingerprint người dùng trong bản này.
+Bản 2.3.0 **có lưu ciphertext của master trong bảng mp_master_cache**. AES-256-GCM, IV ngẫu nhiên 12 byte, tag 16 byte; khóa HKDF từ SESSION_SECRET. AAD ràng buộc scope và thời điểm hết hạn; scope HMAC ràng buộc tài khoản HRM. Không lưu master dạng rõ hoặc mật khẩu HRM trong DB/log/file/CDN/localStorage. Không trả ciphertext qua API xác nhận phiên/lịch sử.
 
-HRM dùng chung tài khoản server hiện có: nhật ký app phân biệt người lấy mã, không thay đổi danh tính ghi nhận trong HRM và không chứng minh ai đã sử dụng mã ở hệ thống khác. Mỗi người phải có tài khoản app riêng để thống kê có ý nghĩa.
+Kiểm tra cả thời gian DB, đồng hồ thực và monotonic trước khi tái sử dụng; bỏ cache khi còn ≤3 giây, không reset về 300 giây. Thay credential HRM hoặc SESSION_SECRET không dùng lại cache cũ. Dữ liệu hết hạn bị từ chối về mặt logic và được thay thế khi có mã mới; không cam kết xóa ciphertext/backup ngay tại thời điểm hết hạn. SESSION_SECRET cần giữ riêng với DB và ổn định giữa các instance cùng deployment.
 
-## Dữ liệu và quản trị
+Schema: mp_users, mp_sessions, mp_limits, mp_get_gate, mp_audit, mp_master_cache. Neon HTTP driver, SQL tham số hóa. Mật khẩu user: scrypt với salt riêng, N=131072/r=8/p=1. Token phiên ngẫu nhiên, DB chỉ giữ SHA-256; cookie HTTPS HttpOnly/Secure/SameSite=Strict, tối đa 8 giờ. Origin/CSRF bảo vệ các POST. Khóa/đặt lại mật khẩu tăng auth_version. Thay admin credential hoặc SESSION_SECRET rồi redeploy thu hồi các phiên tương ứng.
 
-Schema: mp_users, mp_sessions, mp_limits, mp_get_gate, mp_audit. Dùng Neon HTTP driver với SQL tham số hóa. Thao tác tài khoản và ghi audit quản trị thực hiện trong transaction; app không có endpoint sửa/xóa lịch sử hoặc xóa người dùng. Admin xem audit Get qua UI; LOGIN/LOGOUT và thay đổi tài khoản cũng ghi DB để đối chiếu. Người sở hữu DB vẫn có thể sửa dữ liệu; nhật ký này không phải chứng cứ chống sửa tuyệt đối.
+Lịch sử Get hiển thị giờ Việt Nam, lọc người/ngày, phân trang 50 dòng. Pending quá 65 giây hiển thị Gián đoạn. Thao tác xóa và audit xóa nằm trong cùng câu SQL. Người sở hữu DB vẫn có thể sửa dữ liệu; đây không phải nhật ký chống sửa tuyệt đối. App không ghi IP/fingerprint.
 
-Giữ DB/bản sao lưu dưới quyền người quản trị được chỉ định. Bản này không tự xóa lịch sử; cần quyết định thời hạn lưu trước khi vận hành lâu dài. Dùng database riêng cho Production và Preview.
+## Tốc độ và cấu hình tùy chọn
+
+- Mặc định bật cả hai lớp cache. `HRM_SHARED_CACHE_ENABLED=0`: tắt cache Neon, còn RAM cache. `HRM_CACHE_ENABLED=0`: tắt cả hai và đọc HRM mới mỗi Get. Migration vẫn nên chạy trước deploy để schema đồng nhất.
+- `HRM_LIGHTWEIGHT_BROWSER=0`: tải lại ảnh/font/media HRM; mặc định bỏ tài nguyên nội bộ không cần thiết, giữ CSS/JS/API và tài nguyên xác minh bên ngoài.
+- Runtime Logs chỉ có nhãn source (`hrm`, `memory`, `shared`, `database`), readerMs/processingMs, version và requestId. `shared` là chờ cùng reader trên một instance; `database` là giải mã cache Neon.
+- Cache hợp lệ không cần Chromium. Khi toàn bộ cache hết hạn, lần đầu vẫn chịu thời gian HRM, Chromium và mạng/DB. Không tự lấy trước theo lịch, không giữ browser mở. Chưa đo trên Vercel/HRM thật nên không cam kết số giây.
+- Chọn vùng Function gần Neon; xem DEPLOY.md. Không tự chuyển database đang có sang vùng khác.
 
 ## Local và kiểm thử
 
-Node.js 22.x. Tạo .env.local từ .env.example; cấu hình Neon/admin/HRM. Nếu thử HRM local, thêm LOCAL_CHROME_PATH.
+Node.js 22.x. Tạo .env.local từ .env.example, cấu hình Neon/admin/HRM; thêm LOCAL_CHROME_PATH khi thử HRM local.
 
 ```bash
 npm ci
@@ -46,43 +51,10 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback; cookie local tên mp_session_dev, production HTTPS dùng __Host-mp_session. Không cần DB/HRM thật khi npm test hoặc build: test dùng TEST-ONLY và PostgreSQL PGlite; không tạo tài khoản hay tác động HRM production.
-
-## Cấu trúc
-
-- api/auth.js, api/admin.js, api/history.js: endpoints đăng nhập/quản trị/lịch sử.
-- api/master-password.js: endpoint Get có xác thực và audit.
-- lib/security.mjs: băm mật khẩu, phiên, CSRF.
-- lib/store.mjs: truy vấn Neon; lib/auth-api.mjs: quy tắc tài khoản/quản trị.
-- lib/hrm-browser.mjs: giữ thao tác UI HRM đã hoạt động; bỏ tải ảnh/font/media nội bộ không cần thiết.
-- lib/master-cache.mjs: giữ tối đa một mã HRM còn hiệu lực trong RAM, gộp yêu cầu đồng thời, không lưu mã vào Neon hoặc file.
-- public/index.html, master.js, app-auth.js: form login, Get, admin và lịch sử; dữ liệu user luôn render bằng textContent. CSP chỉ cho JavaScript từ cùng nguồn.
-- database/schema.sql, scripts/db-setup.mjs: khởi tạo DB.
-- *-test.mjs, test-support/: kiểm thử an toàn, UI và SQL.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 79 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 
-Dùng X.Y.Z: tăng patch cho sửa lỗi, minor cho thêm tính năng tương thích, major cho thay đổi không tương thích. Mỗi lần giao source phải tăng phiên bản; package.json là nguồn hiển thị và package-lock.json phải khớp. ZIP luôn tên **Master_Password_Web_vX.Y.Z.zip**, package.json ở gốc ZIP; không chứa node_modules, dist, .env.local hoặc bí mật. API version và footer phải cùng release.
+Dùng X.Y.Z: patch sửa lỗi, minor thêm tính năng, major thay đổi không tương thích. Mỗi lần giao source tăng phiên bản; package.json là nguồn hiển thị, lockfile phải khớp. ZIP tên **Master_Password_Web_vX.Y.Z.zip**, package.json ở gốc; không chứa node_modules/dist/.env.local hoặc bí mật.
 
-## Giới hạn xác minh
-
-Build, kiểm thử bộ đếm/clipboard giả lập, API và SQL PostgreSQL đã kiểm tra. Chưa xác minh Neon production, deployment Vercel, clipboard browser thật hoặc HRM end-to-end trong bản có auth. Không dùng stealth, bỏ TLS, giải CAPTCHA hay tự retry đăng nhập thất bại.
-
-## Tài liệu
-
-- https://github.com/neondatabase/serverless/blob/main/CONFIG.md
-- https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
-- https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
-- https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
-- https://vercel.com/docs/functions/runtimes/node-js
-
-## Thay đổi 2.2.0
-
-- Nút Copy lại master password dùng mã đã lấy, không gọi API hoặc reset countdown. Nút ẩn khi hết hạn/đăng xuất. Nếu clipboard bị từ chối, ô copy thủ công vẫn hoạt động.
-- ADMIN_PASSWORD: 8–256 ký tự. Mật khẩu tài khoản người dùng (tạo/đặt lại): 4–256 ký tự. Hash scrypt và mật khẩu hiện có vẫn tương thích; SESSION_SECRET vẫn tối thiểu 32 ký tự.
-- Dùng lại mã HRM còn hiệu lực trong RAM của mỗi instance; thời gian tính từ timer quan sát thực tế, trừ thời gian đã trôi qua theo cả đồng hồ thực và monotonic. Dừng dùng lại khi còn ≤3 giây, xóa tham chiếu bằng timer khi instance đang chạy; nếu instance bị treo/đóng băng, kiểm tra lại thời gian trước lần dùng tiếp theo. Các yêu cầu cùng lúc chia sẻ một lần đọc HRM. Không lưu master vào DB, file, CDN hoặc localStorage.
-- Mọi Get, kể cả cache hit, vẫn kiểm tra phiên/CSRF/quyền hai lần, áp dụng khóa Get và ghi lịch sử riêng trước khi trả mã. Copy lại trên client không tăng Get.
-- Lần đọc HRM bỏ tải ảnh/font/media từ HRM, giữ CSS/JS/API và tài nguyên xác minh bên ngoài. Bật lại đầy đủ bằng HRM_LIGHTWEIGHT_BROWSER=0 nếu cần đối chiếu giao diện. Tắt RAM cache bằng HRM_CACHE_ENABLED=0.
-- Runtime Logs có event master_request_completed với requestId, source (hrm/memory/shared), readerMs, processingMs; không ghi mã/credential/cookie.
-
-Cache là tối ưu, không phải điều kiện để app hoạt động. Instance mới, instance khác, hết hạn hoặc thay thông tin HRM sẽ phải lấy từ HRM; chưa đo tốc độ trên deployment thật nên không cam kết số giây. App không giữ Chromium mở sau khi đọc.
+Các file chính: api/ cho endpoint; lib/security.mjs, auth-api.mjs và store.mjs cho tài khoản/DB; lib/hrm-browser.mjs cho luồng HRM; lib/master-cache.mjs và shared-master.mjs cho cache; public/ cho UI/toast; database/ cho schema/migration; *-test.mjs cho kiểm thử.

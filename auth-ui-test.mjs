@@ -4,11 +4,11 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import {APP_VERSION} from './lib/app-version.mjs';
 const html=(await readFile(new URL('./public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',APP_VERSION);
-const scripts=await Promise.all(['master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
+const scripts=await Promise.all(['notifications.js','master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
 async function flush(){for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));}
 async function setup({deferredMaster=false,configIssues=null}={}){
  const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only'}),w=dom.window;
- const requests=[],copies=[],users=[];let current=null,resolveMaster;
+ const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
  w.AbortSignal=AbortSignal;w.setInterval=()=>1;w.clearInterval=()=>{};
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
@@ -20,6 +20,7 @@ async function setup({deferredMaster=false,configIssues=null}={}){
   if(path==='/api/auth'){
    if(configIssues)return response(503,{error:'AUTH_NOT_CONFIGURED',configIssues,privateValue:'PRIVATE-SERVER-VALUE'});
    if(body?.action==='login'){current=body.username==='admin'?admin:user;return response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id});}
+   if(body?.action==='change_password'){assert.equal(current.role,'user');current=null;return response(200,{ok:true,loginRequired:true});}
    if(body?.action==='logout'){assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);current=null;return response(200,{ok:true});}
    return current?response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id}):response(401,{error:'UNAUTHENTICATED'});
   }
@@ -28,7 +29,7 @@ async function setup({deferredMaster=false,configIssues=null}={}){
    if(body?.action==='toggle')users[0].active=body.active;
    return response(200,body?{ok:true}:{users});
   }
-  if(path.startsWith('/api/history'))return response(200,{items:[],stats:{total:0,issued:0,failed:0},offset:0,pageSize:50});
+  if(path.startsWith('/api/history')){if(body){assert.equal(current.role,'admin');const count=body.action==='delete_all'?history.length:1;history.splice(0,body.action==='delete_all'?history.length:1);return response(200,{ok:true,deleted:count});}return response(200,{items:history,stats:{total:history.length,issued:history.length,failed:0},offset:0,pageSize:50});}
   if(path==='/api/master-password'){
    assert.ok(current);assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);
    if(deferredMaster)return new Promise(r=>{resolveMaster=()=>r(response(200,{password:'TEST-MASTER',remainingMs:90000,processingMs:0}));});
@@ -40,7 +41,7 @@ async function setup({deferredMaster=false,configIssues=null}={}){
  async function submit(id){$(id).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await flush();}
  async function login(username){$('login-username').value=username;$('login-password').value='TEST-ONLY-PASSWORD';await submit('login-form');}
  async function click(id){$(id).click();await flush();}
- return {dom,w,$,requests,copies,users,login,click,submit,resolve:()=>resolveMaster()};
+ return {dom,w,$,requests,copies,users,history,login,click,submit,resolve:()=>resolveMaster()};
 }
 test('UI login, admin create/lock/reset, history and logout clear private content',async()=>{
  const h=await setup();try{
@@ -76,5 +77,39 @@ test('configuration diagnostics appear on page load and failed login using only 
    assert.equal(h.$('workspace').hidden,true);assert.equal(h.w.MasterSession,null);
   };
   verify();await h.login('admin');verify();assert.equal(h.$('login-password').value,'');
+ }finally{h.dom.window.close();}
+});
+test('user history is hidden and guarded; own password form clears secrets and requires a new login',async()=>{
+ const h=await setup();try{
+  await h.login('tester');assert.equal(h.$('tab-history').hidden,true);assert.equal(h.$('tab-password').hidden,false);
+  const before=h.requests.length;await h.click('tab-history');assert.equal(h.requests.length,before);assert.equal(h.$('history-panel').hidden,true);
+  await h.click('tab-password');assert.equal(h.$('password-panel').hidden,false);
+  h.$('password-current').value='TEST-OLD';h.$('password-new').value='abcd';h.$('password-confirm').value='dcba';
+  await h.submit('password-form');assert.match(h.$('password-status').textContent,/chưa khớp/);assert.equal(h.requests.filter(r=>r.body?.action==='change_password').length,0);
+  h.$('password-current').value='TEST-OLD';h.$('password-new').value='abcd';h.$('password-confirm').value='abcd';await h.submit('password-form');
+  const request=h.requests.find(r=>r.body?.action==='change_password');assert.equal(request.body.newPassword,'abcd');assert.equal(request.headers['X-CSRF-Token'],'TEST-CSRF-user');
+  assert.equal(h.w.MasterSession,null);assert.equal(h.$('workspace').hidden,true);assert.equal(h.$('password-current').value,'');assert.equal(h.$('password-new').value,'');
+  assert.match(h.$('toast').textContent,/Đã đổi mật khẩu/);assert.equal(h.$('toast').hidden,false);
+  await h.login('admin');assert.equal(h.$('tab-password').hidden,true);await h.click('tab-password');assert.equal(h.$('password-panel').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('Get/copy success uses an auto-dismissed toast and no static success line',async()=>{
+ const h=await setup();try{
+  assert.ok(!html.includes('Lấy mật khẩu và copy ngay vào clipboard.'));assert.ok(!html.includes('Đang kết nối HRM'));
+  const timers=[];h.w.setTimeout=(fn,ms)=>{timers.push({fn,ms});return timers.length;};h.w.clearTimeout=()=>{};
+  await h.login('tester');await h.click('get');assert.match(h.$('toast').textContent,/Đã lấy và copy/);assert.equal(h.$('status').textContent,'');
+  assert.equal(timers.at(-1).ms,3500);timers.at(-1).fn();assert.equal(h.$('toast').hidden,true);assert.equal(h.$('toast').textContent,'');
+  await h.click('copy');assert.match(h.$('toast').textContent,/Đã copy lại/);assert.equal(h.$('status').textContent,'');
+ }finally{h.dom.window.close();}
+});
+test('admin confirms or cancels single-row and all-history deletion',async()=>{
+ const h=await setup();try{
+  h.history.push({id:'11111111-1111-4111-8111-111111111111',full_name:'TEST USER',username:'tester',status:'issued',requested_at:new Date().toISOString()});
+  await h.login('admin');await h.click('tab-history');h.$('history-rows').querySelector('button').click();
+  assert.equal(h.$('history-delete-dialog').open,true);await h.click('history-delete-cancel');assert.equal(h.requests.filter(r=>r.body?.action==='delete_one').length,0);
+  h.$('history-rows').querySelector('button').click();await h.submit('history-delete-form');
+  assert.equal(h.requests.find(r=>r.body?.action==='delete_one').body.id,'11111111-1111-4111-8111-111111111111');assert.equal(h.$('history-delete-dialog').open,false);assert.match(h.$('toast').textContent,/Đã xóa 1/);
+  await h.click('history-delete-all');assert.match(h.$('history-delete-description').textContent,/ngoài bộ lọc/);await h.submit('history-delete-form');
+  assert.equal(h.requests.find(r=>r.body?.action==='delete_all').body.confirm,'DELETE_ALL_GET_HISTORY');
  }finally{h.dom.window.close();}
 });

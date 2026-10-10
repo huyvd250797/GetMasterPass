@@ -14,7 +14,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
       copyButton.hidden = true; copyButton.disabled = false;
       button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
-      message('Mã đã hết hiệu lực. Bấm nút để lấy mã tiếp theo.');
+      message('');
     }
     window.clearMaster = expire;
     function tick() {
@@ -23,7 +23,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       seconds.textContent = String(Math.floor(ms / 1000));
       progress.style.width = `${Math.min(100, ms / 3000)}%`;
     }
-    async function copy() {
+    async function copy(retrieved=false) {
       if (!window.MasterSession?.user) return expire();
       if (!secret || remaining() < 1000) return expire();
       const epoch = masterEpoch, session = window.MasterSession, value = secret;
@@ -33,12 +33,13 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         if (stale()) return;
         if (!secret || remaining() < 1000) return expire();
         manual.hidden = true; manual.value = ''; button.hidden = true;
-        message('Đã copy vào clipboard.', 'success');
+        message('');window.MasterNotify?.success(retrieved?'Đã lấy và copy master password.':'Đã copy lại master password.');
       } catch {
         if (stale()) return;
         if (!secret || remaining() < 1000) return expire();
         manual.value = secret; manual.hidden = false; button.hidden = true;
         message('Trình duyệt chưa cho phép copy. Bấm lại hoặc copy mã bên trên.', 'error');
+        window.MasterNotify?.error('Chưa copy được. Bấm Copy lại hoặc copy mã thủ công.');
       }
     }
     copyButton.addEventListener('click', async () => {
@@ -50,25 +51,19 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       const session = window.MasterSession;
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
-      button.disabled = true; button.textContent = 'Đang lấy…'; message('Đang kết nối HRM…');
+      button.disabled = true; button.textContent = 'Đang lấy…'; message('');
       let start = performance.now();
       try {
-        // Check the deployed backend before sending a request that logs into HRM.
-        const versionResponse = await fetch('/api/version', {cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(10000)}).catch(()=>{throw new Error('VERSION_UNAVAILABLE');});
-        let info;
-        try {info=await versionResponse.json();} catch {throw new Error('VERSION_UNAVAILABLE');}
-        if (!versionResponse.ok || !/^\d+\.\d+\.\d+$/.test(info?.version)) throw new Error('VERSION_UNAVAILABLE');
-        serverVersion.textContent = ` · Server v${info.version}`;
-        if (info.version !== APP_VERSION) throw new Error('VERSION_MISMATCH');
-        start = performance.now();
+        // Server validates X-App-Version before HRM work; no extra preflight round-trip.
         const response = await fetch('/api/master-password', {
           method:'POST', headers:{'X-Master-Request':'1','X-App-Version':APP_VERSION,'X-CSRF-Token':session.csrfToken}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(65000)
         });
         let data;
         try { data = await response.json(); } catch { throw new Error('API_INVALID_RESPONSE'); }
+        if (window.MasterSession !== session) return;
         if (response.status === 401) {window.MasterAccess?.requireLogin(); throw new Error('UNAUTHENTICATED');}
-        if (window.MasterSession !== session) throw new Error('UNAUTHENTICATED');
         if (data.version !== APP_VERSION) throw new Error('VERSION_MISMATCH');
+        serverVersion.textContent = ` · Server v${data.version}`;
         if (!response.ok) throw Object.assign(new Error(data.error || 'HRM_UNAVAILABLE'),{diagnostic:data});
         const processing = Number.isFinite(data.processingMs) && data.processingMs >= 0 ? data.processingMs : 0;
         const transit = Math.max(0, performance.now() - start - processing);
@@ -77,7 +72,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         masterEpoch++; secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
         button.hidden = true; copyButton.hidden = false;
         active.hidden = false; tick(); clearInterval(timer); timer = setInterval(tick, 250);
-        await copy();
+        await copy(true);
       } catch (error) {
         const errors = {
           UNAUTHENTICATED:'Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.',

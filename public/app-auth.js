@@ -1,15 +1,17 @@
 (() => {
  const $=id=>document.getElementById(id);
  const version=$('app-version').textContent.trim().replace(/^v/,'');
- let authEpoch=0,offset=0,total=0,selectedTab='master',resetId='',historyLoad=0,usersLoad=0;
+ let authEpoch=0,offset=0,total=0,selectedTab='master',resetId='',historyLoad=0,usersLoad=0,deleteId='';
  const errors={UNAUTHENTICATED:'Vui lòng đăng nhập lại.',INVALID_CREDENTIALS:'Sai username, mật khẩu hoặc tài khoản đã bị khóa.',
   FORBIDDEN:'Tài khoản không có quyền thực hiện thao tác.',AUTH_NOT_CONFIGURED:'Chưa cấu hình đăng nhập. Liên hệ quản trị viên.',
   DATABASE_NOT_CONFIGURED:'Chưa cấu hình dữ liệu. Liên hệ quản trị viên.',DATABASE_NOT_READY:'Chưa khởi tạo dữ liệu. Liên hệ quản trị viên.',
   DATABASE_UNAVAILABLE:'Chưa kết nối được cơ sở dữ liệu. Vui lòng thử lại sau.',VERSION_MISMATCH:'Giao diện và server khác phiên bản. Tải lại trang.',
-  RATE_LIMITED:'Quá nhiều yêu cầu. Đăng nhập tối đa 8 lần / 15 phút cho mỗi username; hãy thử lại sau.',
+  RATE_LIMITED:'Quá nhiều thao tác. Vui lòng thử lại sau.',
   USERNAME_EXISTS:'Username đã tồn tại.',RESERVED_USERNAME:'Username này dành cho admin.',PASSWORD_POLICY:'Mật khẩu phải có từ 4 đến 256 ký tự.',
-  INVALID_INPUT:'Thông tin chưa hợp lệ. Kiểm tra các trường và khoảng ngày.',USER_NOT_FOUND:'Tài khoản không tồn tại.'};
- const show=(id,text,type='')=>{$(id).textContent=text;$(id).className='note '+type;};
+  INVALID_INPUT:'Thông tin chưa hợp lệ. Kiểm tra các trường và khoảng ngày.',USER_NOT_FOUND:'Tài khoản không tồn tại.',
+  CURRENT_PASSWORD_INVALID:'Mật khẩu hiện tại chưa đúng.',PASSWORD_CONFIRM_MISMATCH:'Hai lần nhập mật khẩu mới chưa khớp.',
+  HISTORY_NOT_DELETABLE:'Dòng lịch sử đang xử lý hoặc đã được xóa. Tải lại lịch sử.'};
+ const show=(id,text,type='')=>{if(type==='success'){window.MasterNotify?.success(text);text='';}$(id).textContent=text;$(id).className='note '+type;};
  const configMessages={
   ADMIN_USERNAME_MISSING:'ADMIN_USERNAME: deployment chưa nhận được giá trị.',
   ADMIN_USERNAME_INVALID:'ADMIN_USERNAME: cần 3–64 ký tự, bắt đầu bằng chữ/số; chỉ dùng chữ không dấu, số, dấu . _ -.',
@@ -30,6 +32,8 @@
  function requireLogin(){
   authEpoch++;historyLoad++;usersLoad++;window.MasterSession=null;window.clearMaster?.();$('workspace').hidden=true;$('login-panel').hidden=false;
   $('tab-users').hidden=true;$('actor-filter').hidden=true;document.querySelector('main').classList.remove('wide');
+  $('tab-history').hidden=true;$('tab-password').hidden=true;$('password-form').reset();$('password-status').textContent='';
+  $('history-delete-dialog').close();deleteId='';window.MasterNotify?.clear();
   $('create-form').reset();$('history-actor').replaceChildren();$('who').textContent='';
   $('users-rows').replaceChildren();$('history-rows').replaceChildren();$('reset-dialog').close();$('reset-password').value='';resetId='';
  }
@@ -49,6 +53,7 @@
   $('login-panel').hidden=true;$('workspace').hidden=false;$('login-password').value='';
   $('who').textContent=`${d.user.fullName} · ${d.user.username}${d.user.role==='admin'?' · Admin':''}`;
   $('tab-users').hidden=d.user.role!=='admin';$('actor-filter').hidden=d.user.role!=='admin';
+  $('tab-history').hidden=d.user.role!=='admin';$('tab-password').hidden=d.user.role!=='user';
  }
  async function refresh(){
   const epoch=authEpoch;try{const d=await api('/api/auth');if(epoch!==authEpoch)return;enter(d);}
@@ -88,19 +93,25 @@
   if(sequence!==historyLoad||window.MasterSession!==session)return;
   total=d.stats.total;for(const k of ['total','issued','failed'])$('stat-'+k).textContent=String(d.stats[k]);
   $('history-rows').replaceChildren();const labels={issued:'Đã trả mã',failed:'Lỗi',denied:'Từ chối',pending:'Đang xử lý',interrupted:'Gián đoạn / chưa trả mã'};
-  for(const r of d.items)$('history-rows').append(row([`${r.full_name} (${r.username})`,time(r.requested_at),`${labels[r.status]||r.status}${r.error_code?' · '+r.error_code:''}`,time(r.expires_at),r.id]));
-  if(!d.items.length)empty($('history-rows'),'Không có yêu cầu trong khoảng đã chọn.',5);
+  for(const r of d.items){
+   const tr=row([`${r.full_name} (${r.username})`,time(r.requested_at),`${labels[r.status]||r.status}${r.error_code?' · '+r.error_code:''}`,time(r.expires_at),r.id]);
+   const td=document.createElement('td'),button=document.createElement('button');button.type='button';button.className='danger';button.textContent='Xóa';button.disabled=r.status==='pending';
+   button.addEventListener('click',()=>openDelete(r.id,`Xóa yêu cầu của ${r.full_name} (${r.username}) lúc ${time(r.requested_at)}?`));td.append(button);tr.append(td);$('history-rows').append(tr);
+  }
+  if(!d.items.length)empty($('history-rows'),'Không có yêu cầu trong khoảng đã chọn.',6);
   $('history-prev').disabled=offset===0;$('history-next').disabled=offset+50>=total;
   $('history-page').textContent=total?`${offset+1}–${Math.min(offset+50,total)} / ${total}`:'0 yêu cầu';
  }
  async function tab(name){
+  const role=window.MasterSession?.user.role;
+  if(!role||['history','users'].includes(name)&&role!=='admin'||name==='password'&&role!=='user')return;
   selectedTab=name;show('app-status','');
-  for(const t of ['master','history','users']){$(t+'-panel').hidden=t!==name;$('tab-'+t).setAttribute('aria-pressed',String(t===name));}
+  for(const t of ['master','history','users','password']){$(t+'-panel').hidden=t!==name;$('tab-'+t).setAttribute('aria-pressed',String(t===name));}
   document.querySelector('main').classList.toggle('wide',name!=='master');
   try{if(name==='users')await loadUsers();if(name==='history'){offset=0;if(window.MasterSession?.user.role==='admin')await loadUsers();await loadHistory();}}
   catch(e){show('app-status',errorText(e),'error');}
  }
- for(const name of ['master','history','users'])$('tab-'+name).addEventListener('click',()=>tab(name));
+ for(const name of ['master','history','users','password'])$('tab-'+name).addEventListener('click',()=>tab(name));
  $('login-form').addEventListener('submit',e=>{e.preventDefault();busy($('login-submit'),async()=>{
   const username=$('login-username').value,password=$('login-password').value;
   try{const d=await api('/api/auth',{action:'login',username,password});enter(d);show('login-status','Đăng nhập bằng tài khoản được admin cấp.');await tab('master');}
@@ -121,6 +132,27 @@
  $('history-form').addEventListener('submit',e=>{e.preventDefault();offset=0;busy($('history-submit'),loadHistory);});
  $('history-prev').addEventListener('click',()=>{offset=Math.max(0,offset-50);loadHistory().catch(e=>show('app-status',errorText(e),'error'));});
  $('history-next').addEventListener('click',()=>{offset+=50;loadHistory().catch(e=>show('app-status',errorText(e),'error'));});
+ $('password-form').addEventListener('submit',e=>{e.preventDefault();busy($('password-submit'),async()=>{
+  try{
+   if($('password-new').value!==$('password-confirm').value)throw new Error('PASSWORD_CONFIRM_MISMATCH');
+   const session=window.MasterSession;
+   await api('/api/auth',{action:'change_password',currentPassword:$('password-current').value,newPassword:$('password-new').value});
+   if(window.MasterSession!==session)return;
+   requireLogin();show('login-status','Vui lòng đăng nhập bằng mật khẩu mới.');window.MasterNotify?.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
+  }finally{$('password-form').reset();}
+ },'password-status');});
+ function openDelete(id,text){
+  if(window.MasterSession?.user.role!=='admin')return;
+  deleteId=id;$('history-delete-description').textContent=text;show('history-delete-status','');$('history-delete-dialog').showModal();
+ }
+ $('history-delete-all').addEventListener('click',()=>openDelete('all','Xóa tất cả lịch sử Get của mọi người dùng, bao gồm dữ liệu ngoài bộ lọc đang chọn? Yêu cầu đang xử lý sẽ được giữ lại.'));
+ $('history-delete-cancel').addEventListener('click',()=>{$('history-delete-dialog').close();deleteId='';});
+ $('history-delete-form').addEventListener('submit',e=>{e.preventDefault();busy($('history-delete-confirm'),async()=>{
+  const session=window.MasterSession,id=deleteId;if(!id||session?.user.role!=='admin')return;
+  const body=id==='all'?{action:'delete_all',confirm:'DELETE_ALL_GET_HISTORY'}:{action:'delete_one',id};
+  const d=await api('/api/history',body);if(window.MasterSession!==session)return;
+  $('history-delete-dialog').close();deleteId='';offset=0;window.MasterNotify?.success(`Đã xóa ${d.deleted} dòng lịch sử.`);await loadHistory();
+ },'history-delete-status');});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
  window.addEventListener('pageshow',refresh);
  setInterval(()=>{if(window.MasterSession&&!document.hidden)refresh();},30000);

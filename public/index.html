@@ -32,6 +32,8 @@
     table {width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap} th,td {padding:12px;border-bottom:1px solid #2b404d;text-align:left} th {color:#91adbf;font-weight:500}
     .row-actions {display:flex;gap:8px} dialog {background:#101c26;color:#ecf4fa;border:1px solid #425c6c;border-radius:18px;width:min(90vw,420px);padding:28px} dialog::backdrop{background:#000a}
     .empty {padding:24px;text-align:center;color:#9ab0bf} h2 {font-size:20px;text-align:left;margin:0 0 16px}
+    #status:empty,.note:empty{display:none} .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1000;width:max-content;max-width:calc(100vw - 32px);padding:15px 22px;border:1px solid #3d8b7d;border-radius:14px;background:#143b32;color:#c8fff0;box-shadow:0 12px 40px #0006;font-size:14px;line-height:1.5;text-align:center}
+    .toast.error{background:#492523;border-color:#aa655f;color:#ffd5d0} button.danger{background:#5b2d30;color:#ffd5d0}
     @media(max-width:440px){main{padding:32px 24px}body{padding:16px}}
   </style>
 </head>
@@ -39,7 +41,6 @@
   <main>
     <div class="icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.5"/><path d="m11.2 11.2 9 9M16 16l2.5-2.5M18.5 18.5 21 16"/></svg></div>
     <h1>Master Password</h1>
-    <p class="sub">Lấy mật khẩu và copy ngay vào clipboard.</p>
     <section id="login-panel">
       <form id="login-form">
         <label for="login-username">Tên đăng nhập</label><input id="login-username" name="username" autocomplete="username" required maxlength="64">
@@ -52,8 +53,9 @@
       <div class="toolbar"><span id="who" class="note"></span><button id="logout" class="secondary" type="button">Đăng xuất</button></div>
       <nav class="tabs" aria-label="Chức năng">
         <button id="tab-master" type="button" aria-pressed="true">Lấy master</button>
-        <button id="tab-history" type="button" class="secondary" aria-pressed="false">Lịch sử</button>
+        <button id="tab-history" type="button" class="secondary" aria-pressed="false" hidden>Lịch sử</button>
         <button id="tab-users" type="button" class="secondary" aria-pressed="false" hidden>Tài khoản</button>
+        <button id="tab-password" type="button" class="secondary" aria-pressed="false" hidden>Đổi mật khẩu</button>
       </nav>
       <section id="master-panel">
     <section id="active" hidden aria-label="Thời gian còn hiệu lực">
@@ -63,10 +65,11 @@
     <button id="get" type="button">Get master password</button>
     <button id="copy" type="button" hidden>Copy lại master password</button>
     <textarea id="manual" rows="2" readonly hidden aria-label="Mật khẩu để copy thủ công" spellcheck="false" autocomplete="off"></textarea>
-    <p id="status" role="status" aria-live="polite">Sẵn sàng lấy mật khẩu.</p>
+    <p id="status" role="status" aria-live="polite"></p>
       </section>
       <section id="history-panel" hidden>
         <h2>Lịch sử lấy master</h2>
+        <div class="toolbar"><span class="note">Chỉ admin quản lý lịch sử.</span><button id="history-delete-all" class="danger" type="button">Xóa tất cả lịch sử</button></div>
         <form id="history-form">
           <div class="grid">
             <div id="actor-filter" hidden><label for="history-actor">Người dùng</label><select id="history-actor"><option value="">Tất cả</option><option value="admin">Quản trị viên</option></select></div>
@@ -81,7 +84,7 @@
           <div class="stat">Lỗi / từ chối<strong id="stat-failed">0</strong></div>
         </div>
         <p class="note">Giờ Việt Nam · Đã trả mã là server đã ghi nhận và chuẩn bị trả kết quả. Copy lại không tăng số lần Get.</p>
-        <div class="table-wrap"><table><thead><tr><th>Người dùng</th><th>Thời điểm yêu cầu</th><th>Kết quả</th><th>Hết hiệu lực</th><th>Mã giao dịch</th></tr></thead><tbody id="history-rows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Người dùng</th><th>Thời điểm yêu cầu</th><th>Kết quả</th><th>Hết hiệu lực</th><th>Mã giao dịch</th><th>Thao tác</th></tr></thead><tbody id="history-rows"></tbody></table></div>
         <div class="toolbar"><button id="history-prev" class="secondary" type="button">Trước</button><span id="history-page" class="note"></span><button id="history-next" class="secondary" type="button">Tiếp</button></div>
       </section>
       <section id="users-panel" hidden>
@@ -98,6 +101,15 @@
         <h2>Danh sách tài khoản</h2>
         <div class="table-wrap"><table><thead><tr><th>Họ tên</th><th>Username</th><th>Trạng thái</th><th>Số lần đã trả mã</th><th>Thao tác</th></tr></thead><tbody id="users-rows"></tbody></table></div>
       </section>
+      <section id="password-panel" hidden>
+        <h2>Đổi mật khẩu</h2>
+        <form id="password-form">
+          <label for="password-current">Mật khẩu hiện tại</label><input id="password-current" type="password" autocomplete="current-password" required maxlength="256">
+          <label for="password-new">Mật khẩu mới</label><input id="password-new" type="password" autocomplete="new-password" required minlength="4" maxlength="256">
+          <label for="password-confirm">Nhập lại mật khẩu mới</label><input id="password-confirm" type="password" autocomplete="new-password" required minlength="4" maxlength="256">
+          <button id="password-submit" type="submit">Lưu mật khẩu mới</button>
+        </form><p id="password-status" class="note" role="status"></p>
+      </section>
       <p id="app-status" class="note" role="status" aria-live="polite"></p>
     </section>
     <dialog id="reset-dialog">
@@ -109,6 +121,12 @@
     </dialog>
     <footer>ASC · Tiện ích mật khẩu master · <span id="app-version">v__APP_VERSION__</span><span id="server-version"></span></footer>
   </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="history-delete-dialog"><form id="history-delete-form">
+    <h2>Xóa lịch sử</h2><p id="history-delete-description" class="note"></p><p id="history-delete-status" class="note" role="status"></p>
+    <div class="toolbar"><button id="history-delete-confirm" class="danger" type="submit">Xóa lịch sử</button><button id="history-delete-cancel" class="secondary" type="button">Hủy</button></div>
+  </form></dialog>
+  <script src="/notifications.js" defer></script>
   <script src="/master.js" defer></script>
   <script src="/app-auth.js" defer></script>
 </body>

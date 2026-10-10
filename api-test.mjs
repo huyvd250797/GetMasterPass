@@ -99,3 +99,11 @@ test('warm cache still requires authentication, admission, revalidation and a se
   assert.equal(blocked.status,503);assert.doesNotMatch(await blocked.text(),/PRIVATE-MASTER/);assert.equal(reads,1);
  }finally{reader.clear();}
 });
+test('optimized durable verification denial/expiry never leaks a code or retries an already final audit',async()=>{
+ for(const result of [{status:'denied',error_code:'UNAUTHENTICATED'},{status:'failed',error_code:'INVALID_RESPONSE'}]){
+  let finishes=0,sessions=0;
+  const store={...testStore(),session:async()=>{sessions++;return testStore().session();},finishGetVerified:async()=>result,finishGet:async()=>{finishes++;throw Error('already final');}};
+  const r=await handle(req(),{env,store,reader:async()=>({password:'TEST-NEVER-RELEASED',remainingMs:90000}),logger:()=>{}});
+  assert.equal(r.status,result.status==='denied'?401:502);assert.equal(sessions,1);assert.equal(finishes,0);assert.doesNotMatch(await r.text(),/TEST-NEVER-RELEASED/);
+ }
+});

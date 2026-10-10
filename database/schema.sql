@@ -1,4 +1,4 @@
--- Run once in Neon SQL Editor. Idempotent for a new v2.1.0 installation.
+-- Run once in Neon SQL Editor. Idempotent for a new v2.3.0 installation.
 CREATE TABLE IF NOT EXISTS mp_users (
  id uuid PRIMARY KEY, username varchar(64) UNIQUE NOT NULL,
  full_name varchar(120) NOT NULL, password_hash text NOT NULL,
@@ -29,3 +29,13 @@ CREATE TABLE IF NOT EXISTS mp_audit (
 );
 CREATE INDEX IF NOT EXISTS mp_audit_actor_time_idx ON mp_audit(actor_key,requested_at DESC);
 CREATE INDEX IF NOT EXISTS mp_audit_time_idx ON mp_audit(requested_at DESC);
+
+-- Run once on the existing Neon database before deploying v2.3.0.
+-- Adds encrypted short-lived shared cache; preserves all accounts and history.
+CREATE TABLE IF NOT EXISTS mp_master_cache (
+ scope char(64) PRIMARY KEY,
+ payload text,
+ expires_at timestamptz,
+ lease_id uuid,
+ lease_until timestamptz NOT NULL DEFAULT now()
+);

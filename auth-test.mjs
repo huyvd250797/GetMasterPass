@@ -31,8 +31,9 @@ test('users cannot list/create accounts or request other users history',async()=
  assert.equal((await handleAdminRequest(request('/api/admin'),{env:testEnv,store})).status,403);
  assert.equal((await handleAdminRequest(request('/api/admin',{action:'create'}),{env:testEnv,store})).status,403);
  let filter;store.history=async f=>{filter=f;return {items:[],stats:{}};};
- assert.equal((await handleHistoryRequest(request('/api/history?actor=admin'),{env:testEnv,store})).status,200);
- assert.equal(filter.actorKey,'11111111-1111-4111-8111-111111111111');
+ assert.equal((await handleHistoryRequest(request('/api/history?actor=admin'),{env:testEnv,store})).status,403);
+ assert.equal(filter,undefined);
+ assert.equal((await handleHistoryRequest(request('/api/history',{action:'delete_all',confirm:'DELETE_ALL_GET_HISTORY'}),{env:testEnv,store})).status,403);
 });
 test('login CSRF/version checks and oversize bodies fail without credential processing',async()=>{
  const store={rate:async()=>{throw new Error('must not run');}};

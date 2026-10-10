@@ -14,14 +14,15 @@ const {version}=JSON.parse(await readFile(new URL('../package.json',import.meta.
 if(!/^\d+\.\d+\.\d+$/.test(version))throw new Error('Version must use X.Y.Z');
 const html=(await readFile(new URL('../public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',version);
 const masterJs=await readFile(new URL('../public/master.js',import.meta.url),'utf8');
+const notifyJs=await readFile(new URL('../public/notifications.js',import.meta.url),'utf8');
 const authJs=await readFile(new URL('../public/app-auth.js',import.meta.url),'utf8');
 http.createServer(async(req,res)=>{
  try{
   if(req.headers.host!==host){res.writeHead(403);res.end();return;}
   const path=new URL(req.url,`http://${host}`).pathname;
-  if(req.method==='GET'&&['/','/app-auth.js','/master.js'].includes(path)){
+  if(req.method==='GET'&&['/','/app-auth.js','/master.js','/notifications.js'].includes(path)){
    res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY'});
-   res.end(path==='/'?html:path==='/master.js'?masterJs:authJs);return;
+   res.end(path==='/'?html:path==='/master.js'?masterJs:path==='/notifications.js'?notifyJs:authJs);return;
   }
   const handlers={'/api/version':handleVersionRequest,'/api/auth':handleAuthRequest,'/api/admin':handleAdminRequest,'/api/history':handleHistoryRequest,'/api/master-password':handleMasterRequest};
   if(!handlers[path]){res.writeHead(404);res.end();return;}
