@@ -23,11 +23,19 @@ test('successful request subtracts closing time, keeps original lifetime and dis
   assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'no-store');
   assert.deepEqual(await result.json(),{password:'TEST-ONLY',remainingMs:119700,processingMs:20200});
 });
-test('blocked login and unexpected failures do not leak details',async()=>{
-  let result=await handleMasterRequest(req(),{env,reader:async()=>{throw Object.assign(new Error('PRIVATE DETAILS'),{code:'AUTH_BLOCKED'});}});
-  assert.equal(result.status,502);assert.deepEqual(await result.json(),{error:'AUTH_BLOCKED'});
-  result=await handleMasterRequest(req(),{env,reader:async()=>{throw new Error('PRIVATE PASSWORD COOKIE HTML');}});
-  assert.deepEqual(await result.json(),{error:'HRM_UNAVAILABLE'});
+test('failure response and runtime log contain only allowlisted diagnostics',async()=>{
+  const logs=[];
+  for (const error of [Object.assign(new Error('PRIVATE PASSWORD COOKIE HTML'),{code:'AUTH_BLOCKED',stage:'hrm_check'}),
+    Object.assign(new Error('PRIVATE PASSWORD COOKIE HTML'),{code:'PRIVATE',stage:'PRIVATE'})]) {
+    const result=await handleMasterRequest(req(),{env,logger:e=>logs.push(e),reader:async()=>{throw error;}});
+    assert.equal(result.status,502);
+    const data=await result.json();
+    assert.equal(data.error,error.code==='AUTH_BLOCKED'?'AUTH_BLOCKED':'HRM_UNAVAILABLE');
+    assert.equal(data.stage,error.code==='AUTH_BLOCKED'?'hrm_check':'reader');
+    assert.equal(data.reason,'UNKNOWN');assert.match(data.requestId,/^[a-f0-9-]{36}$/);
+    assert.equal(logs.at(-1).requestId,data.requestId);
+    assert.doesNotMatch(JSON.stringify(data)+JSON.stringify(logs),/PRIVATE|PASSWORD|COOKIE|HTML/);
+  }
 });
 test('expired or overlong code lifetime is rejected',async()=>{
   for (const remainingMs of [0,500,300001]) {

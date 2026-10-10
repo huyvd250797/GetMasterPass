@@ -1,6 +1,6 @@
 {
   "name": "master-password-helper",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,11 @@
     "build": "node scripts/build.mjs",
     "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs"
   },
-  "engines": {"node": "22.x"},
-  "dependencies": {"@sparticuz/chromium":"153.0.0","puppeteer-core":"25.11.0"}
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "153.0.0",
+    "puppeteer-core": "25.11.0"
+  }
 }

@@ -6,6 +6,31 @@ Luồng: Get → tự copy vào clipboard → đếm giây còn hiệu lực →
 
 **Source đã có cấu hình Vercel và đã qua kiểm tra build/unit test. Chưa deploy live hoặc kiểm thử đăng nhập tự động trên Vercel bằng tài khoản thật. HRM có thể từ chối trình duyệt server, yêu cầu CAPTCHA hoặc thay đổi giao diện; trong các trường hợp đó app báo lỗi, không vượt qua kiểm soát truy cập.**
 
+## Bản sửa 2.0.1 — lỗi HRM_UNAVAILABLE
+
+Phản hồi cũ chỉ có HRM_UNAVAILABLE không cho biết bước hỏng. Bản này:
+
+- Bổ sung quyền clipboard-sanitized-write cho clipboard của Chromium server, ngoài quyền đọc/ghi đã có. Đây là quyền cần cho thao tác ghi văn bản; hai tên clipboard-read và clipboard-write trong phiên bản Puppeteer đã pin cùng ánh xạ sang clipboardReadWrite.
+- Dùng đường dẫn bin được đóng gói ở node_modules khi tồn tại, tránh phụ thuộc vị trí module sau bundling.
+- Phân biệt lỗi nạp dependency, giải nén Chromium, khởi chạy browser, cấp quyền, kết nối HRM, đăng nhập, copy và đọc mã.
+- Trả error, stage, reason, requestId và ghi sự kiện master_request_failed với đúng các nhãn này. Không ghi nguyên văn exception, stack, HTML, cookie, URL hoặc bí mật.
+
+Để cập nhật: thay nội dung source trong repo hiện tại, commit/push lên nhánh Vercel đang deploy, chờ deployment mới thành công rồi thử Get. Nếu deploy thủ công, chọn **Redeploy**, bỏ chọn **Use existing Build Cache** để lấy source/dependencies sạch. Không cần thêm biến môi trường.
+
+Nếu vẫn lỗi, gửi JSON của request **mới** trong DevTools → Network → master-password → Response. Trong Vercel project → Logs, tìm master_request_failed theo requestId tương ứng. Chỉ cần các nhãn chẩn đoán; không gửi tài khoản, mật khẩu, master, cookie hoặc nội dung HRM.
+
+| error / stage / reason | Hướng kiểm tra |
+| --- | --- |
+| BROWSER_UNAVAILABLE / browser_binary / FILE_MISSING | Chromium bin chưa được đóng gói; kiểm tra Root Directory, npm dependencies và includeFiles trong vercel.json. |
+| BROWSER_START_FAILED / browser_launch / LIBRARY_MISSING | Chromium thiếu thư viện hệ thống ở runtime. Cần đối chiếu runtime thực tế trong Function Logs. |
+| HRM_CONNECTION_FAILED / hrm_navigation / DNS_FAILED, CONNECTION_REFUSED, TLS_FAILED hoặc TIMEOUT | Kết nối từ server tới HRM không thành công. Máy người dùng truy cập được chưa chứng minh Vercel cũng truy cập được. |
+| HRM_ACCESS_DENIED / hrm_navigation / HTTP_403, HTTP_429 hoặc HTTP_5XX | HRM trả lỗi HTTP cho server. Không tự retry hoặc bỏ qua kiểm soát truy cập. |
+| LOGIN_FAILED / login_result | Không thấy phiên đăng nhập hoàn tất; kiểm tra tài khoản hoặc yêu cầu đăng nhập khác của HRM. Không khẳng định chỉ sai mật khẩu. |
+| CLIPBOARD_UNAVAILABLE / clipboard_clear / PERMISSION_DENIED | Clipboard của browser server chưa được cấp quyền hoặc trang không cho phép. |
+| COPY_FAILED / master_copy / TIMEOUT | Thao tác master chưa trả clipboard và timer hợp lệ. |
+
+Bản này đã qua build và unit test, chưa xác nhận lỗi cụ thể của deployment hiện tại vì chưa có log theo bước. Chưa kiểm thử đầu cuối trên Vercel bằng tài khoản HRM thật.
+
 ## Deploy
 
 1. Giải nén. Push **nội dung thư mục chứa package.json** lên repo GitHub của Boss; nên dùng repo Private cho công việc nội bộ.
@@ -77,6 +102,7 @@ Mở http://127.0.0.1:8787. Có thể chạy Start.cmd sau khi npm install. Serv
 - public/index.html: giao diện, clipboard và bộ đếm.
 - api/master-password.js: Vercel Function.
 - lib/master-api.mjs: xử lý request, lỗi và trả mã; vị trí bổ sung kiểm tra phiên/quyền khi phát triển login.
+- lib/hrm-errors.mjs: nhãn lỗi an toàn, không xuất chi tiết exception.
 - lib/hrm-browser.mjs: đăng nhập HRM và thao tác master bằng browser server.
 - scripts/build.mjs: build giao diện vào dist.
 - scripts/dev.mjs: server phát triển local.
