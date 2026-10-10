@@ -1,4 +1,4 @@
-# Master Password — v2.1.0
+# Master Password — v2.1.1
 
 App Vercel có đăng nhập bằng username/password riêng. Chỉ người được admin cấp tài khoản mới lấy được master từ HRM. Nút Get giữ hành vi copy + bộ đếm thời gian thực của v2.0.4.
 
@@ -74,3 +74,7 @@ Build, kiểm thử bộ đếm/clipboard giả lập, API và SQL PostgreSQL đ
 - https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
 - https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 - https://vercel.com/docs/functions/runtimes/node-js
+
+## 2.1.1
+
+Chẩn đoán cấu hình đăng nhập theo từng biến ngay trên giao diện và response API. Không thay chính sách mật khẩu, cơ chế phiên, schema Neon hoặc luồng HRM. Chi tiết cập nhật và kiểm tra môi trường deployment trong DEPLOY.md.

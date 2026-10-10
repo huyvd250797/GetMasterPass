@@ -10,21 +10,37 @@
   USERNAME_EXISTS:'Username đã tồn tại.',RESERVED_USERNAME:'Username này dành cho admin.',PASSWORD_POLICY:'Mật khẩu phải có từ 12 đến 256 ký tự.',
   INVALID_INPUT:'Thông tin chưa hợp lệ. Kiểm tra các trường và khoảng ngày.',USER_NOT_FOUND:'Tài khoản không tồn tại.'};
  const show=(id,text,type='')=>{$(id).textContent=text;$(id).className='note '+type;};
- const errorText=e=>errors[e.message]||'Không hoàn tất được yêu cầu. Vui lòng thử lại.';
+ const configMessages={
+  ADMIN_USERNAME_MISSING:'ADMIN_USERNAME: deployment chưa nhận được giá trị.',
+  ADMIN_USERNAME_INVALID:'ADMIN_USERNAME: cần 3–64 ký tự, bắt đầu bằng chữ/số; chỉ dùng chữ không dấu, số, dấu . _ -.',
+  ADMIN_PASSWORD_MISSING:'ADMIN_PASSWORD: deployment chưa nhận được giá trị.',
+  ADMIN_PASSWORD_TOO_SHORT:'ADMIN_PASSWORD: cần ít nhất 12 ký tự.',
+  ADMIN_PASSWORD_TOO_LONG:'ADMIN_PASSWORD: tối đa 256 ký tự.',
+  SESSION_SECRET_MISSING:'SESSION_SECRET: deployment chưa nhận được giá trị.',
+  SESSION_SECRET_TOO_SHORT:'SESSION_SECRET: cần ít nhất 32 ký tự.'
+ };
+ function errorText(e){
+  if(e.message==='AUTH_NOT_CONFIGURED'){
+   const issues=e.diagnostic?.configIssues;
+   const details=Array.isArray(issues)?[...new Set(issues.filter(s=>typeof s==='string'&&Object.hasOwn(configMessages,s)))].map(s=>configMessages[s]):[];
+   if(details.length)return 'Cấu hình đăng nhập chưa hợp lệ. '+details.join(' ')+' Kiểm tra Environment Variables của đúng project và môi trường, sau đó deploy lại.';
+  }
+  return errors[e.message]||'Không hoàn tất được yêu cầu. Vui lòng thử lại.';
+ }
  function requireLogin(){
   authEpoch++;historyLoad++;usersLoad++;window.MasterSession=null;window.clearMaster?.();$('workspace').hidden=true;$('login-panel').hidden=false;
   $('tab-users').hidden=true;$('actor-filter').hidden=true;document.querySelector('main').classList.remove('wide');
   $('create-form').reset();$('history-actor').replaceChildren();$('who').textContent='';
   $('users-rows').replaceChildren();$('history-rows').replaceChildren();$('reset-dialog').close();$('reset-password').value='';resetId='';
  }
- window.MasterAccess={requireLogin};
+ window.MasterAccess={requireLogin,errorText};
  async function api(path,body){
   const options={method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(15000)};
   if(body){options.headers={'Content-Type':'application/json','X-Master-Request':'1','X-App-Version':version,'X-CSRF-Token':window.MasterSession?.csrfToken||''};options.body=JSON.stringify(body);}
   const requestSession=window.MasterSession;
   const r=await fetch(path,options);const d=await r.json();
   if(d.version!==version)throw new Error('VERSION_MISMATCH');
-  if(!r.ok){if(r.status===401&&body?.action!=='login'&&window.MasterSession===requestSession)requireLogin();throw new Error(d.error||'FAILED');}
+  if(!r.ok){if(r.status===401&&body?.action!=='login'&&window.MasterSession===requestSession)requireLogin();throw Object.assign(new Error(d.error||'FAILED'),{diagnostic:d});}
   return d;
  }
  function enter(d){

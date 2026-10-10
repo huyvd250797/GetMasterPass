@@ -4,6 +4,7 @@ import {hashPassword,verifyPassword,sessionCookie,cookieToken,authenticate,confi
 import {handleAuthRequest,handleAdminRequest,handleHistoryRequest} from './lib/auth-api.mjs';
 import {testEnv,token,testHeaders,testStore} from './test-support/auth-fixture.mjs';
 import {APP_VERSION} from './lib/app-version.mjs';
+import {safeAppFailure} from './lib/http.mjs';
 const origin='https://master-test.invalid';
 const request=(path,body,headers={})=>new Request(origin+path,{method:body?'POST':'GET',headers:{Origin:origin,'X-Master-Request':'1','X-App-Version':APP_VERSION,'Content-Type':'application/json',...testHeaders,...headers},...(body?{body:JSON.stringify(body)}:{})});
 test('salted scrypt accepts the right password and rejects wrong or malformed hashes',async()=>{
@@ -50,4 +51,47 @@ test('admin history validates date range and applies Vietnam day boundaries',asy
  const result=await handleHistoryRequest(request('/api/history?from=2026-10-10&to=2026-10-10'),{env:testEnv,store});
  assert.equal(result.status,200);const d=await result.json();assert.equal(d.filter.from,'2026-10-09T17:00:00.000Z');assert.equal(d.filter.to,'2026-10-10T17:00:00.000Z');
  assert.equal((await handleHistoryRequest(request('/api/history?from=2026-02-30'),{env:testEnv,store})).status,400);
+});
+test('configuration failures identify every invalid field without calling Neon or exposing values',async()=>{
+ const cases=[
+  ['ADMIN_USERNAME',undefined,'ADMIN_USERNAME_MISSING'],
+  ['ADMIN_USERNAME','   ','ADMIN_USERNAME_MISSING'],
+  ['ADMIN_USERNAME','PRIVATE ADMIN!','ADMIN_USERNAME_INVALID'],
+  ['ADMIN_USERNAME','_admin','ADMIN_USERNAME_INVALID'],
+  ['ADMIN_PASSWORD',undefined,'ADMIN_PASSWORD_MISSING'],
+  ['ADMIN_PASSWORD','PRIVATE','ADMIN_PASSWORD_TOO_SHORT'],
+  ['ADMIN_PASSWORD','PRIVATE'.repeat(40),'ADMIN_PASSWORD_TOO_LONG'],
+  ['SESSION_SECRET',undefined,'SESSION_SECRET_MISSING'],
+  ['SESSION_SECRET','PRIVATE KEY','SESSION_SECRET_TOO_SHORT']
+ ];
+ for(const [field,value,issue] of cases){
+  let calls=0;const env={...testEnv,[field]:value};
+  for(const body of [null,{action:'login',username:'admin',password:testEnv.ADMIN_PASSWORD}]){
+   const result=await handleAuthRequest(request('/api/auth',body),{env,loadStore:async()=>{calls++;throw new Error('must not run');}});
+   assert.equal(result.status,503);assert.equal(result.headers.get('cache-control'),'no-store');
+   const data=await result.json();assert.deepEqual(data,{error:'AUTH_NOT_CONFIGURED',configIssues:[issue],version:APP_VERSION});
+   assert.doesNotMatch(JSON.stringify(data),/PRIVATE|TEST-ADMIN-ONLY|TEST-ONLY-SESSION/);
+  }
+  assert.equal(calls,0);
+ }
+ const all=await handleAuthRequest(request('/api/auth'),{env:{},loadStore:async()=>{throw new Error('must not run');}});
+ assert.deepEqual((await all.json()).configIssues,['ADMIN_USERNAME_MISSING','ADMIN_PASSWORD_MISSING','SESSION_SECRET_MISSING']);
+});
+test('valid configuration boundaries proceed to login without changing passwords or session keys',async()=>{
+ for(const [username,password] of [[' Admin ', 'x'.repeat(12)],['a'.repeat(64),'x'.repeat(256)]]){
+  const env={...testEnv,ADMIN_USERNAME:username,ADMIN_PASSWORD:password,SESSION_SECRET:'k'.repeat(32)};
+  checkConfig(env);let saved;
+  const store={rate:async()=>true,loginSession:async(s,a)=>{saved={s,a};}};
+  const response=await handleAuthRequest(request('/api/auth',{action:'login',username:username.trim(),password}),{env,store});
+  assert.equal(response.status,200);assert.equal(saved.a.role,'admin');assert.equal(saved.a.username,username.trim().toLowerCase());
+  assert.match(response.headers.get('set-cookie'),/HttpOnly; SameSite=Strict/);
+ }
+ const env={...testEnv,ADMIN_PASSWORD:' TEST PASSWORD ',SESSION_SECRET:' k'.repeat(20)};
+ let events=0;
+ const rejected=await handleAuthRequest(request('/api/auth',{action:'login',username:'admin',password:env.ADMIN_PASSWORD.trim()}),{env,store:{rate:async()=>true,event:async()=>{events++;}}});
+ assert.equal(rejected.status,401);assert.equal(events,1);
+});
+test('configuration diagnostics filter unknown labels and never forward arbitrary error details',async()=>{
+ const result=safeAppFailure({appCode:'AUTH_NOT_CONFIGURED',configIssues:['ADMIN_PASSWORD_TOO_SHORT','PRIVATE KEY','ADMIN_PASSWORD_TOO_SHORT'],message:'PRIVATE PASSWORD',env:testEnv});
+ assert.deepEqual(await result.json(),{error:'AUTH_NOT_CONFIGURED',configIssues:['ADMIN_PASSWORD_TOO_SHORT'],version:APP_VERSION});
 });

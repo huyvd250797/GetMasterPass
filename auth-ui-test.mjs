@@ -6,7 +6,7 @@ import {APP_VERSION} from './lib/app-version.mjs';
 const html=(await readFile(new URL('./public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',APP_VERSION);
 const scripts=await Promise.all(['master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
 async function flush(){for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));}
-async function setup({deferredMaster=false}={}){
+async function setup({deferredMaster=false,configIssues=null}={}){
  const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only'}),w=dom.window;
  const requests=[],copies=[],users=[];let current=null,resolveMaster;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
@@ -18,6 +18,7 @@ async function setup({deferredMaster=false}={}){
   const body=options.body?JSON.parse(options.body):null;requests.push({path,body,headers:options.headers});
   if(path==='/api/version')return response(200,{});
   if(path==='/api/auth'){
+   if(configIssues)return response(503,{error:'AUTH_NOT_CONFIGURED',configIssues,privateValue:'PRIVATE-SERVER-VALUE'});
    if(body?.action==='login'){current=body.username==='admin'?admin:user;return response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id});}
    if(body?.action==='logout'){assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);current=null;return response(200,{ok:true});}
    return current?response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id}):response(401,{error:'UNAUTHENTICATED'});
@@ -60,5 +61,18 @@ test('a master response finishing after logout is never copied or shown',async()
  const h=await setup({deferredMaster:true});try{
   await h.login('tester');await h.click('get');await h.click('logout');h.resolve();await flush();
   assert.equal(h.copies.length,0);assert.equal(h.$('manual').value,'');assert.equal(h.$('workspace').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('configuration diagnostics appear on page load and failed login using only known labels',async()=>{
+ const h=await setup({configIssues:['ADMIN_PASSWORD_TOO_SHORT','SESSION_SECRET_MISSING','<img src=x onerror=alert(1)>','PRIVATE-SERVER-VALUE']});
+ try{
+  const verify=()=>{
+   assert.match(h.$('login-status').textContent,/ADMIN_PASSWORD: cần ít nhất 12 ký tự/);
+   assert.match(h.$('login-status').textContent,/SESSION_SECRET: deployment chưa nhận được giá trị/);
+   assert.doesNotMatch(h.$('login-status').textContent,/PRIVATE|<img/);
+   assert.equal(h.$('login-status').querySelector('img'),null);
+   assert.equal(h.$('workspace').hidden,true);assert.equal(h.w.MasterSession,null);
+  };
+  verify();await h.login('admin');verify();assert.equal(h.$('login-password').value,'');
  }finally{h.dom.window.close();}
 });

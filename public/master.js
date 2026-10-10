@@ -101,7 +101,9 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         // Display only diagnostic labels, never arbitrary server text.
         const details=d && /^[a-z_]{1,40}$/.test(d.stage) && /^[A-Z0-9_]{1,40}$/.test(d.reason) &&
           /^[a-f0-9-]{36}$/.test(d.requestId) ? ` [${error.message}: ${d.stage}/${d.reason}; ID ${d.requestId}]` : '';
-        message((errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.')+details, 'error');
+        const description=error.message==='AUTH_NOT_CONFIGURED'&&window.MasterAccess?.errorText
+          ?window.MasterAccess.errorText(error):errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.';
+        message(description+details, 'error');
         button.textContent = 'Get master password';
       } finally {button.disabled = false;}
     });

@@ -1,4 +1,4 @@
-# Deploy Master Password v2.1.0
+# Deploy Master Password v2.1.1
 
 Bản này giữ luồng HRM v2.0.4 đang hoạt động và thêm đăng nhập bắt buộc. Tài khoản admin lấy từ Vercel; tài khoản người dùng, phiên và lịch sử lưu trong Neon PostgreSQL.
 
@@ -31,7 +31,7 @@ Các biến chỉ cấu hình server; không thêm tiền tố NEXT_PUBLIC/VITE_
 
 ## 3. Push và deploy
 
-1. Giải nén **Master_Password_Web_v2.1.0.zip**; package.json nằm ngay thư mục gốc của ZIP.
+1. Giải nén **Master_Password_Web_v2.1.1.zip**; package.json nằm ngay thư mục gốc của ZIP.
 2. Thay source trong checkout repo đang nối Vercel. Giữ bí mật ở Environment Variables.
 3. Chạy:
 
@@ -41,7 +41,7 @@ npm test
 npm run build
 git status
 git add .
-git commit -m "Add app authentication and audit history v2.1.0"
+git commit -m "Add app authentication and audit history v2.1.1"
 git push
 ```
 
@@ -49,13 +49,13 @@ Nếu remote có commit mới, pull và xử lý xung đột trước; không fo
 
 Cấu hình: Framework Other, Root Directory chứa package.json, Build Command `npm run build`, Output Directory `dist`, Node.js 22.x. `vercel.json` đã cấu hình function và đóng gói Chromium. Build không đăng nhập HRM hoặc kết nối DB.
 
-4. Chờ deployment Ready, mở URL mới và kiểm tra footer **v2.1.0**. `/api/version` phải trả cùng phiên bản.
+4. Chờ deployment Ready, mở URL mới và kiểm tra footer **v2.1.1**. `/api/version` phải trả cùng phiên bản.
 5. Đăng nhập bằng ADMIN_USERNAME/ADMIN_PASSWORD đã cấu hình. Tab **Tài khoản** → nhập họ tên, username và mật khẩu → Tạo tài khoản.
 6. Đăng xuất admin; đăng nhập bằng tài khoản vừa cấp; thử Get master. Đăng nhập lại admin → tab **Lịch sử**, kiểm tra người dùng/thời gian/số lần.
 
 Sau khi chuyển Production, kiểm tra các URL deployment v2.0.x cũ. Nếu chúng còn truy cập được mà chưa có đăng nhập, bảo vệ hoặc ngừng phục vụ các deployment đó; source mới không bảo vệ URL của bản cũ.
 
-Source không tự thay đổi Deployment Protection hoặc cấu hình tài khoản Vercel. Các lớp bảo vệ hosting đang có vẫn giữ nguyên; app v2.1.0 có kiểm tra phiên riêng ở backend cho endpoint lấy master.
+Source không tự thay đổi Deployment Protection hoặc cấu hình tài khoản Vercel. Các lớp bảo vệ hosting đang có vẫn giữ nguyên; app v2.1.1 có kiểm tra phiên riêng ở backend cho endpoint lấy master.
 
 ## 4. Kiểm tra sau deploy
 
@@ -82,3 +82,15 @@ Source không tự thay đổi Deployment Protection hoặc cấu hình tài kho
 Nếu HRM lỗi, gửi nhãn error/stage/reason/requestId mới, không gửi mật khẩu, cookie, HTML HRM hoặc DATABASE_URL.
 
 Đã kiểm tra bằng dữ liệu TEST-ONLY và PostgreSQL chạy trong bộ kiểm thử. Chưa deploy bản này, chưa xác minh kết nối Neon thật hoặc Chromium → HRM trên Vercel với lớp đăng nhập mới.
+
+## Cập nhật từ 2.1.0 lên 2.1.1
+
+Không cần đổi schema hoặc tạo lại tài khoản. Bản 2.1.1 giữ nguyên các quy tắc đăng nhập; thay thông báo chung bằng tên biến và lý do kiểm tra không đạt. Ví dụ `ADMIN_PASSWORD: cần ít nhất 12 ký tự` dù biến đã tồn tại.
+
+1. Thay source bằng ZIP 2.1.1, commit/push để Vercel build commit mới. Redeploy commit 2.1.0 không cập nhật source.
+2. Kiểm tra footer và `/api/version` cùng hiển thị `2.1.1`.
+3. Nếu còn lỗi cấu hình, đọc tên biến trên màn hình hoặc `configIssues` trong response `/api/auth`. Các nhãn chỉ mô tả quy tắc không đạt; không trả giá trị, độ dài thực tế, URL database hoặc mật khẩu.
+4. Trong đúng Vercel project, kiểm tra đúng tên biến (phân biệt hoa thường), môi trường Production/Preview của URL đang mở, và có giá trị thật. Không đưa cả dòng `ADMIN_PASSWORD=...` vào ô Value; không thêm dấu nháy bao ngoài như khi viết file .env.
+5. Sau khi sửa biến, tạo deployment mới của source 2.1.1. Domain chính phải trỏ vào deployment đó; URL deployment cũ vẫn giữ cấu hình cũ.
+
+Lỗi này chỉ liên quan ADMIN_USERNAME, ADMIN_PASSWORD và SESSION_SECRET. DATABASE_URL và bảng Neon có lỗi riêng. Không tự trim hoặc sửa ADMIN_PASSWORD/SESSION_SECRET vì sẽ thay đổi thông tin đăng nhập và khóa phiên. Nếu cả ba biến hợp lệ trong runtime thì `/api/auth` không trả AUTH_NOT_CONFIGURED; GET chưa đăng nhập trả UNAUTHENTICATED.
