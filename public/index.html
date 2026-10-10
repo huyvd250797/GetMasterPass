@@ -18,6 +18,20 @@
     #status {font-size:13px;line-height:1.65;min-height:22px;margin:20px 0 0;color:#9ab0bf} #status.error {color:#ffb1ad} #status.success {color:#83eed7}
     textarea {width:100%;margin-top:18px;padding:12px;background:#091119;color:#ecf4fa;border:1px solid #536b7a;border-radius:10px;font-family:monospace;resize:none}
     footer {margin-top:28px;padding-top:20px;border-top:1px solid #263440;color:#7792a4;font-size:11px;letter-spacing:.1px}
+    main.wide {width:min(100%,1040px)}
+    label {display:block;text-align:left;font-size:13px;color:#b5c7d3;margin:14px 0 6px}
+    input,select {width:100%;padding:13px;border:1px solid #3c5261;border-radius:10px;background:#0b151e;color:#ecf4fa;font:inherit;min-width:0}
+    form button {margin-top:20px} .toolbar {display:flex;gap:10px;align-items:center;justify-content:space-between;margin:18px 0;flex-wrap:wrap}
+    .toolbar button,.tabs button,.row-actions button {width:auto;min-height:38px;padding:8px 14px;font-size:13px}
+    button.secondary {background:#263b49;color:#e2edf4} .tabs {display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 26px}
+    .tabs button[aria-pressed="true"] {background:#83eed7;color:#09221e}
+    .note {color:#9ab0bf;font-size:13px;line-height:1.6} .error {color:#ffb1ad} .success {color:#83eed7}
+    .grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;text-align:left}
+    .stats {display:flex;gap:12px;flex-wrap:wrap;margin:20px 0} .stat {flex:1;min-width:120px;padding:16px;border:1px solid #314855;border-radius:12px;text-align:left}
+    .stat strong {display:block;font-size:26px;margin-top:6px} .table-wrap {overflow-x:auto;text-align:left}
+    table {width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap} th,td {padding:12px;border-bottom:1px solid #2b404d;text-align:left} th {color:#91adbf;font-weight:500}
+    .row-actions {display:flex;gap:8px} dialog {background:#101c26;color:#ecf4fa;border:1px solid #425c6c;border-radius:18px;width:min(90vw,420px);padding:28px} dialog::backdrop{background:#000a}
+    .empty {padding:24px;text-align:center;color:#9ab0bf} h2 {font-size:20px;text-align:left;margin:0 0 16px}
     @media(max-width:440px){main{padding:32px 24px}body{padding:16px}}
   </style>
 </head>
@@ -26,102 +40,76 @@
     <div class="icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.5"/><path d="m11.2 11.2 9 9M16 16l2.5-2.5M18.5 18.5 21 16"/></svg></div>
     <h1>Master Password</h1>
     <p class="sub">Lấy mật khẩu và copy ngay vào clipboard.</p>
+    <section id="login-panel">
+      <form id="login-form">
+        <label for="login-username">Tên đăng nhập</label><input id="login-username" name="username" autocomplete="username" required maxlength="64">
+        <label for="login-password">Mật khẩu</label><input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        <button id="login-submit" type="submit">Đăng nhập</button>
+      </form>
+      <p id="login-status" class="note" role="status">Đăng nhập bằng tài khoản được admin cấp.</p>
+    </section>
+    <section id="workspace" hidden>
+      <div class="toolbar"><span id="who" class="note"></span><button id="logout" class="secondary" type="button">Đăng xuất</button></div>
+      <nav class="tabs" aria-label="Chức năng">
+        <button id="tab-master" type="button" aria-pressed="true">Lấy master</button>
+        <button id="tab-history" type="button" class="secondary" aria-pressed="false">Lịch sử</button>
+        <button id="tab-users" type="button" class="secondary" aria-pressed="false" hidden>Tài khoản</button>
+      </nav>
+      <section id="master-panel">
     <section id="active" hidden aria-label="Thời gian còn hiệu lực">
       <p id="seconds">0</p><p class="timer-label">giây còn hiệu lực</p>
       <div class="track" aria-hidden="true"><div id="progress"></div></div>
     </section>
     <button id="get" type="button">Get master password</button>
+    <button id="copy" type="button" hidden>Copy lại master password</button>
     <textarea id="manual" rows="2" readonly hidden aria-label="Mật khẩu để copy thủ công" spellcheck="false" autocomplete="off"></textarea>
     <p id="status" role="status" aria-live="polite">Sẵn sàng lấy mật khẩu.</p>
-    <footer>ASC · Tiện ích mật khẩu master</footer>
+      </section>
+      <section id="history-panel" hidden>
+        <h2>Lịch sử lấy master</h2>
+        <form id="history-form">
+          <div class="grid">
+            <div id="actor-filter" hidden><label for="history-actor">Người dùng</label><select id="history-actor"><option value="">Tất cả</option><option value="admin">Quản trị viên</option></select></div>
+            <div><label for="history-from">Từ ngày</label><input id="history-from" type="date"></div>
+            <div><label for="history-to">Đến ngày</label><input id="history-to" type="date"></div>
+          </div>
+          <button id="history-submit" type="submit" class="secondary">Lọc lịch sử</button>
+        </form>
+        <div class="stats">
+          <div class="stat">Yêu cầu<strong id="stat-total">0</strong></div>
+          <div class="stat">Đã trả mã<strong id="stat-issued">0</strong></div>
+          <div class="stat">Lỗi / từ chối<strong id="stat-failed">0</strong></div>
+        </div>
+        <p class="note">Giờ Việt Nam · Đã trả mã là server đã ghi nhận và chuẩn bị trả kết quả. Copy lại không tăng số lần Get.</p>
+        <div class="table-wrap"><table><thead><tr><th>Người dùng</th><th>Thời điểm yêu cầu</th><th>Kết quả</th><th>Hết hiệu lực</th><th>Mã giao dịch</th></tr></thead><tbody id="history-rows"></tbody></table></div>
+        <div class="toolbar"><button id="history-prev" class="secondary" type="button">Trước</button><span id="history-page" class="note"></span><button id="history-next" class="secondary" type="button">Tiếp</button></div>
+      </section>
+      <section id="users-panel" hidden>
+        <h2>Cấp tài khoản</h2>
+        <form id="create-form">
+          <div class="grid">
+            <div><label for="create-name">Họ tên</label><input id="create-name" required maxlength="120" autocomplete="off"></div>
+            <div><label for="create-username">Username</label><input id="create-username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" autocomplete="off"></div>
+            <div><label for="create-password">Mật khẩu cấp mới</label><input id="create-password" type="password" required minlength="4" maxlength="256" autocomplete="new-password"></div>
+          </div>
+          <button id="create-submit" type="submit">Tạo tài khoản</button>
+        </form>
+        <p class="note">Username gồm 3–64 ký tự chữ, số, dấu chấm, gạch dưới hoặc gạch ngang. Mật khẩu từ 4 ký tự. Mỗi người dùng một tài khoản riêng.</p>
+        <h2>Danh sách tài khoản</h2>
+        <div class="table-wrap"><table><thead><tr><th>Họ tên</th><th>Username</th><th>Trạng thái</th><th>Số lần đã trả mã</th><th>Thao tác</th></tr></thead><tbody id="users-rows"></tbody></table></div>
+      </section>
+      <p id="app-status" class="note" role="status" aria-live="polite"></p>
+    </section>
+    <dialog id="reset-dialog">
+      <form id="reset-form"><h2>Đặt lại mật khẩu</h2><p id="reset-target" class="note"></p>
+        <label for="reset-password">Mật khẩu mới</label><input id="reset-password" type="password" required minlength="4" maxlength="256" autocomplete="new-password">
+        <p id="reset-status" class="note" role="status"></p>
+        <div class="toolbar"><button id="reset-submit" type="submit">Lưu mật khẩu</button><button id="reset-cancel" class="secondary" type="button">Hủy</button></div>
+      </form>
+    </dialog>
+    <footer>ASC · Tiện ích mật khẩu master · <span id="app-version">v__APP_VERSION__</span><span id="server-version"></span></footer>
   </main>
-  <script>
-    const button = document.getElementById('get');
-    const active = document.getElementById('active');
-    const seconds = document.getElementById('seconds');
-    const progress = document.getElementById('progress');
-    const status = document.getElementById('status');
-    const manual = document.getElementById('manual');
-    let secret = '', lifetime = 0, wallStart = 0, monotonicStart = 0, timer;
-    const remaining = () => Math.max(0, lifetime - Math.max(Date.now() - wallStart, performance.now() - monotonicStart));
-    const message = (text, type = '') => {status.textContent = text; status.className = type;};
-    function expire() {
-      clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
-      button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
-      message('Mã đã hết hiệu lực. Bấm nút để lấy mã tiếp theo.');
-    }
-    function tick() {
-      const ms = remaining();
-      if (ms < 1000) {expire(); return;}
-      seconds.textContent = String(Math.floor(ms / 1000));
-      progress.style.width = `${Math.min(100, ms / 3000)}%`;
-    }
-    async function copy() {
-      if (!secret || remaining() < 1000) return expire();
-      try {
-        await navigator.clipboard.writeText(secret);
-        if (!secret || remaining() < 1000) return expire();
-        manual.hidden = true; manual.value = ''; button.hidden = true;
-        message('Đã copy vào clipboard.', 'success');
-      } catch {
-        if (!secret || remaining() < 1000) return expire();
-        manual.value = secret; manual.hidden = false; button.hidden = false; button.textContent = 'Copy master password';
-        message('Trình duyệt chưa cho phép copy. Bấm lại hoặc copy mã bên trên.', 'error');
-      }
-    }
-    button.addEventListener('click', async () => {
-      if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
-      button.disabled = true; button.textContent = 'Đang lấy…'; message('Đang kết nối HRM…');
-      const start = performance.now();
-      try {
-        const response = await fetch('/api/master-password', {
-          method:'POST', headers:{'X-Master-Request':'1'}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(65000)
-        });
-        let data;
-        try { data = await response.json(); } catch { throw new Error('API_INVALID_RESPONSE'); }
-        if (!response.ok) throw Object.assign(new Error(data.error || 'HRM_UNAVAILABLE'),{diagnostic:data});
-        const processing = Number.isFinite(data.processingMs) && data.processingMs >= 0 ? data.processingMs : 0;
-        const transit = Math.max(0, performance.now() - start - processing);
-        const ms = data.remainingMs - transit;
-        if (typeof data.password !== 'string' || !data.password.trim() || !Number.isFinite(ms) || ms < 1000 || ms > 300000) throw new Error('INVALID_RESPONSE');
-        secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
-        active.hidden = false; tick(); clearInterval(timer); timer = setInterval(tick, 250);
-        await copy();
-      } catch (error) {
-        const errors = {
-          NOT_CONFIGURED:'Chưa cấu hình tài khoản HRM trên server.',
-          UNSUPPORTED_RUNTIME:'API cần chạy trên Vercel hoặc server local đi kèm.',
-          LOGIN_FAILED:'Không đăng nhập được HRM. Kiểm tra tài khoản trên Vercel.',
-          AUTH_BLOCKED:'HRM đang yêu cầu xác minh hoặc chặn truy cập tự động.',
-          LOGIN_REQUIRED:'HRM yêu cầu phương thức đăng nhập khác.',
-          HRM_UI_CHANGED:'Giao diện HRM đã thay đổi. Cần cập nhật kết nối.',
-          COPY_FAILED:'HRM chưa cung cấp được mã để copy.',
-          HRM_TIMEOUT:'HRM phản hồi quá lâu. Vui lòng thử lại sau.',
-          BROWSER_START_FAILED:'Chromium không khởi chạy được trên server.',
-          BROWSER_SETUP_FAILED:'Không thiết lập được trình duyệt hoặc quyền clipboard.',
-          HRM_CONNECTION_FAILED:'Server không kết nối được đến HRM.',
-          HRM_ACCESS_DENIED:'HRM từ chối truy cập từ server.',
-          CLIPBOARD_UNAVAILABLE:'Clipboard của trình duyệt server chưa hoạt động.',
-          API_INVALID_RESPONSE:'API không trả JSON. Kiểm tra deployment và Runtime Logs.',
-          HRM_UNAVAILABLE:'Backend gặp lỗi khi lấy mã HRM.',
-          BROWSER_UNAVAILABLE:'Server chưa khởi chạy được trình duyệt HRM.',
-          INVALID_CONFIGURATION:'Cấu hình API HRM chưa hợp lệ.',
-          HRM_ACCESS_DENIED:'HRM từ chối truy cập. Kiểm tra quyền của kết nối.',
-          FORBIDDEN:'Kết nối không được cấp quyền.',
-          TRY_AGAIN:'Vui lòng đợi vài giây rồi thử lại.',
-          INVALID_RESPONSE:'HRM chưa trả về mã và thời gian hiệu lực hợp lệ.'
-        };
-        const d=error.diagnostic;
-        // Display only diagnostic labels, never arbitrary server text.
-        const details=d && /^[a-z_]{1,40}$/.test(d.stage) && /^[A-Z0-9_]{1,40}$/.test(d.reason) &&
-          /^[a-f0-9-]{36}$/.test(d.requestId) ? ` [${error.message}: ${d.stage}/${d.reason}; ID ${d.requestId}]` : '';
-        message((errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.')+details, 'error');
-        button.textContent = 'Get master password';
-      } finally {button.disabled = false;}
-    });
-    document.addEventListener('visibilitychange', () => {if (secret) tick();});
-    window.addEventListener('pageshow', () => {if (secret) tick();});
-    window.addEventListener('pagehide', expire);
-  </script>
+  <script src="/master.js" defer></script>
+  <script src="/app-auth.js" defer></script>
 </body>
 </html>

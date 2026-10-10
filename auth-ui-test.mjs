@@ -55,6 +55,8 @@ test('UI login, admin create/lock/reset, history and logout clear private conten
   await h.click('logout');assert.equal(h.$('workspace').hidden,true);assert.equal(h.w.MasterSession,null);assert.equal(h.$('users-rows').textContent,'');
   await h.login('tester');assert.equal(h.$('tab-users').hidden,true);assert.equal(h.$('actor-filter').hidden,true);
   await h.click('get');assert.deepEqual(h.copies,['TEST-MASTER']);
+  const before=h.requests.length;await h.click('copy');assert.deepEqual(h.copies,['TEST-MASTER','TEST-MASTER']);assert.equal(h.requests.length,before);
+  await h.click('logout');assert.equal(h.$('copy').hidden,true);await h.click('copy');assert.equal(h.copies.length,2);
  }finally{h.dom.window.close();}
 });
 test('a master response finishing after logout is never copied or shown',async()=>{
@@ -67,7 +69,7 @@ test('configuration diagnostics appear on page load and failed login using only 
  const h=await setup({configIssues:['ADMIN_PASSWORD_TOO_SHORT','SESSION_SECRET_MISSING','<img src=x onerror=alert(1)>','PRIVATE-SERVER-VALUE']});
  try{
   const verify=()=>{
-   assert.match(h.$('login-status').textContent,/ADMIN_PASSWORD: cần ít nhất 12 ký tự/);
+   assert.match(h.$('login-status').textContent,/ADMIN_PASSWORD: cần ít nhất 8 ký tự/);
    assert.match(h.$('login-status').textContent,/SESSION_SECRET: deployment chưa nhận được giá trị/);
    assert.doesNotMatch(h.$('login-status').textContent,/PRIVATE|<img/);
    assert.equal(h.$('login-status').querySelector('img'),null);

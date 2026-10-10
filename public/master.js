@@ -1,16 +1,18 @@
 const APP_VERSION = document.getElementById('app-version').textContent.trim().replace(/^v/, '');
     const serverVersion = document.getElementById('server-version');
     const button = document.getElementById('get');
+    const copyButton = document.getElementById('copy');
     const active = document.getElementById('active');
     const seconds = document.getElementById('seconds');
     const progress = document.getElementById('progress');
     const status = document.getElementById('status');
     const manual = document.getElementById('manual');
-    let secret = '', lifetime = 0, wallStart = 0, monotonicStart = 0, timer;
+    let secret = '', lifetime = 0, wallStart = 0, monotonicStart = 0, timer, masterEpoch = 0;
     const remaining = () => Math.max(0, lifetime - Math.max(Date.now() - wallStart, performance.now() - monotonicStart));
     const message = (text, type = '') => {status.textContent = text; status.className = type;};
     function expire() {
-      clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
+      masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
+      copyButton.hidden = true; copyButton.disabled = false;
       button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
       message('Mã đã hết hiệu lực. Bấm nút để lấy mã tiếp theo.');
     }
@@ -22,18 +24,28 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       progress.style.width = `${Math.min(100, ms / 3000)}%`;
     }
     async function copy() {
+      if (!window.MasterSession?.user) return expire();
       if (!secret || remaining() < 1000) return expire();
+      const epoch = masterEpoch, session = window.MasterSession, value = secret;
+      const stale = () => epoch !== masterEpoch || session !== window.MasterSession;
       try {
-        await navigator.clipboard.writeText(secret);
+        await navigator.clipboard.writeText(value);
+        if (stale()) return;
         if (!secret || remaining() < 1000) return expire();
         manual.hidden = true; manual.value = ''; button.hidden = true;
         message('Đã copy vào clipboard.', 'success');
       } catch {
+        if (stale()) return;
         if (!secret || remaining() < 1000) return expire();
-        manual.value = secret; manual.hidden = false; button.hidden = false; button.textContent = 'Copy master password';
+        manual.value = secret; manual.hidden = false; button.hidden = true;
         message('Trình duyệt chưa cho phép copy. Bấm lại hoặc copy mã bên trên.', 'error');
       }
     }
+    copyButton.addEventListener('click', async () => {
+      if (copyButton.disabled) return;
+      copyButton.disabled = true;
+      try {await copy();} finally {copyButton.disabled = false;}
+    });
     button.addEventListener('click', async () => {
       const session = window.MasterSession;
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
@@ -62,7 +74,8 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         const transit = Math.max(0, performance.now() - start - processing);
         const ms = data.remainingMs - transit;
         if (typeof data.password !== 'string' || !data.password.trim() || !Number.isFinite(ms) || ms < 1000 || ms > 300000) throw new Error('INVALID_RESPONSE');
-        secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
+        masterEpoch++; secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
+        button.hidden = true; copyButton.hidden = false;
         active.hidden = false; tick(); clearInterval(timer); timer = setInterval(tick, 250);
         await copy();
       } catch (error) {

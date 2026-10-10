@@ -26,7 +26,7 @@ test('PostgreSQL integration: accounts, sessions, revocation, audit and concurre
    const response=await handleAdminRequest(req('/api/admin',admin),options);assert.doesNotMatch(await response.text(),/password_hash|scrypt|TEST-USER/);
   });
   await t.test('duplicate/reserved username and invalid password are rejected',async()=>{
-   for(const [username,password,status]of [['tester','TEST-USER-ONLY-123',409],['admin','TEST-USER-ONLY-123',400],['another','short',400]]){
+   for(const [username,password,status]of [['tester','TEST-USER-ONLY-123',409],['admin','TEST-USER-ONLY-123',400],['another','abc',400]]){
     const r=await handleAdminRequest(req('/api/admin',admin,{action:'create',username,fullName:'TEST',password}),options);assert.equal(r.status,status);
    }
   });
@@ -67,6 +67,13 @@ test('PostgreSQL integration: accounts, sessions, revocation, audit and concurre
    const result=await store.history({actorKey:'not-a-user'});assert.equal(result.stats.total,0);
    const limited=await store.history({offset:50});assert.equal(limited.items.length,0);
    assert.equal((await handleAdminRequest(req('/api/admin',admin,{action:'toggle',id:randomUUID(),active:false}),options)).status,404);
+  });
+  await t.test('four-character user passwords work for account creation, login and reset with session revocation',async()=>{
+   const created=await handleAdminRequest(req('/api/admin',admin,{action:'create',username:'user4',fullName:'TEST SHORT POLICY',password:'abcd'}),options);
+   assert.equal(created.status,201);const short=await login('user4','abcd');
+   const reset=await handleAdminRequest(req('/api/admin',admin,{action:'reset',id:short.user.id,password:'wxyz'}),options);
+   assert.equal(reset.status,200);assert.equal((await handleAuthRequest(req('/api/auth',short),options)).status,401);
+   await login('user4','wxyz');
   });
  }finally{await db.close();}
 });

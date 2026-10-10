@@ -7,14 +7,14 @@
   DATABASE_NOT_CONFIGURED:'Chưa cấu hình dữ liệu. Liên hệ quản trị viên.',DATABASE_NOT_READY:'Chưa khởi tạo dữ liệu. Liên hệ quản trị viên.',
   DATABASE_UNAVAILABLE:'Chưa kết nối được cơ sở dữ liệu. Vui lòng thử lại sau.',VERSION_MISMATCH:'Giao diện và server khác phiên bản. Tải lại trang.',
   RATE_LIMITED:'Quá nhiều yêu cầu. Đăng nhập tối đa 8 lần / 15 phút cho mỗi username; hãy thử lại sau.',
-  USERNAME_EXISTS:'Username đã tồn tại.',RESERVED_USERNAME:'Username này dành cho admin.',PASSWORD_POLICY:'Mật khẩu phải có từ 12 đến 256 ký tự.',
+  USERNAME_EXISTS:'Username đã tồn tại.',RESERVED_USERNAME:'Username này dành cho admin.',PASSWORD_POLICY:'Mật khẩu phải có từ 4 đến 256 ký tự.',
   INVALID_INPUT:'Thông tin chưa hợp lệ. Kiểm tra các trường và khoảng ngày.',USER_NOT_FOUND:'Tài khoản không tồn tại.'};
  const show=(id,text,type='')=>{$(id).textContent=text;$(id).className='note '+type;};
  const configMessages={
   ADMIN_USERNAME_MISSING:'ADMIN_USERNAME: deployment chưa nhận được giá trị.',
   ADMIN_USERNAME_INVALID:'ADMIN_USERNAME: cần 3–64 ký tự, bắt đầu bằng chữ/số; chỉ dùng chữ không dấu, số, dấu . _ -.',
   ADMIN_PASSWORD_MISSING:'ADMIN_PASSWORD: deployment chưa nhận được giá trị.',
-  ADMIN_PASSWORD_TOO_SHORT:'ADMIN_PASSWORD: cần ít nhất 12 ký tự.',
+  ADMIN_PASSWORD_TOO_SHORT:'ADMIN_PASSWORD: cần ít nhất 8 ký tự.',
   ADMIN_PASSWORD_TOO_LONG:'ADMIN_PASSWORD: tối đa 256 ký tự.',
   SESSION_SECRET_MISSING:'SESSION_SECRET: deployment chưa nhận được giá trị.',
   SESSION_SECRET_TOO_SHORT:'SESSION_SECRET: cần ít nhất 32 ký tự.'

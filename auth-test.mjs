@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hashPassword,verifyPassword,sessionCookie,cookieToken,authenticate,configStamp,csrfFor,checkConfig} from './lib/security.mjs';
+import {hashPassword,verifyPassword,validPassword,sessionCookie,cookieToken,authenticate,configStamp,csrfFor,checkConfig} from './lib/security.mjs';
 import {handleAuthRequest,handleAdminRequest,handleHistoryRequest} from './lib/auth-api.mjs';
 import {testEnv,token,testHeaders,testStore} from './test-support/auth-fixture.mjs';
 import {APP_VERSION} from './lib/app-version.mjs';
@@ -11,7 +11,7 @@ test('salted scrypt accepts the right password and rejects wrong or malformed ha
  const password='TEST-ONLY-password-123';const a=await hashPassword(password),b=await hashPassword(password);
  assert.notEqual(a,b);assert.ok(!a.includes(password));assert.equal(await verifyPassword(password,a),true);
  assert.equal(await verifyPassword('WRONG-ONLY-password',a),false);assert.equal(await verifyPassword(password,'bad'),false);
- await assert.rejects(hashPassword('short'),e=>e.appCode==='PASSWORD_POLICY');
+ await assert.rejects(hashPassword('abc'),e=>e.appCode==='PASSWORD_POLICY');
 });
 test('cookies are secure host-only and token values are bounded',()=>{
  const https=request('/api/auth');assert.match(sessionCookie(https,token),/^__Host-mp_session=/);
@@ -78,7 +78,7 @@ test('configuration failures identify every invalid field without calling Neon o
  assert.deepEqual((await all.json()).configIssues,['ADMIN_USERNAME_MISSING','ADMIN_PASSWORD_MISSING','SESSION_SECRET_MISSING']);
 });
 test('valid configuration boundaries proceed to login without changing passwords or session keys',async()=>{
- for(const [username,password] of [[' Admin ', 'x'.repeat(12)],['a'.repeat(64),'x'.repeat(256)]]){
+ for(const [username,password] of [[' Admin ', 'x'.repeat(8)],['a'.repeat(64),'x'.repeat(256)]]){
   const env={...testEnv,ADMIN_USERNAME:username,ADMIN_PASSWORD:password,SESSION_SECRET:'k'.repeat(32)};
   checkConfig(env);let saved;
   const store={rate:async()=>true,loginSession:async(s,a)=>{saved={s,a};}};
@@ -94,4 +94,12 @@ test('valid configuration boundaries proceed to login without changing passwords
 test('configuration diagnostics filter unknown labels and never forward arbitrary error details',async()=>{
  const result=safeAppFailure({appCode:'AUTH_NOT_CONFIGURED',configIssues:['ADMIN_PASSWORD_TOO_SHORT','PRIVATE KEY','ADMIN_PASSWORD_TOO_SHORT'],message:'PRIVATE PASSWORD',env:testEnv});
  assert.deepEqual(await result.json(),{error:'AUTH_NOT_CONFIGURED',configIssues:['ADMIN_PASSWORD_TOO_SHORT'],version:APP_VERSION});
+});
+test('role password policies accept admin 8+ and users 4+, retaining the 256 character maximum',async()=>{
+ assert.throws(()=>checkConfig({...testEnv,ADMIN_PASSWORD:'1234567'}));
+ checkConfig({...testEnv,ADMIN_PASSWORD:'12345678'});
+ assert.equal(validPassword('123'),false);assert.equal(validPassword('1234'),true);
+ assert.equal(validPassword('x'.repeat(256)),true);assert.equal(validPassword('x'.repeat(257)),false);
+ const encoded=await hashPassword('1234');assert.equal(await verifyPassword('1234',encoded),true);
+ assert.equal(await verifyPassword('1235',encoded),false);
 });
