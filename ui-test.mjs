@@ -4,21 +4,21 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 const {version}=JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8'));
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replaceAll('__APP_VERSION__',version);
+const script = await readFile(new URL('./public/master.js', import.meta.url), 'utf8');
 function setup({copyFails=false,configured=true,processingMs=0,transitMs=0,diagnostic,backendVersion=version,versionAvailable=true,responseVersion=version,versionLatency=0}={}) {
   let now = 0, tick, copies = [], requests = 0;
-  const elements = Object.fromEntries(['get','active','seconds','progress','status','manual','server-version'].map(id => [id,{
-    textContent:'', value:'', hidden:['active','manual'].includes(id), disabled:false, style:{},
+  const elements = Object.fromEntries(['get','active','seconds','progress','status','manual','server-version','app-version'].map(id => [id,{
+    textContent:id==='app-version'?'v'+version:'', value:'', hidden:['active','manual'].includes(id), disabled:false, style:{},
     addEventListener(type,fn){this[type]=fn;}
   }]));
   const context = {
-    document:{getElementById:id=>elements[id],addEventListener(){}}, window:{addEventListener(){}},
+    document:{getElementById:id=>elements[id],addEventListener(){}}, window:{MasterSession:{user:{id:'test'},csrfToken:'TEST-CSRF'},addEventListener(){}},
     Date:{now:()=>now}, performance:{now:()=>now},
     setInterval:fn=>{tick=fn;return 1;},clearInterval(){},AbortSignal:{timeout:()=>null},
     navigator:{clipboard:{async writeText(s){if(copyFails)throw new Error('blocked');copies.push(s);}}},
     fetch:async(url,options)=>{
       if(url==='/api/version'){now+=versionLatency;return {ok:versionAvailable,json:async()=>({version:backendVersion})};}
-      assert.equal(options.headers['X-App-Version'],version);
+      assert.equal(options.headers['X-App-Version'],version);assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF');
       requests++;now+=processingMs+transitMs;return {ok:configured,json:async()=>({...(configured?{password:'TEST-ONLY',remainingMs:90000,processingMs}:(diagnostic||{error:'NOT_CONFIGURED'})),version:responseVersion})};
     }
   };
