@@ -1,11 +1,8 @@
-import { mkdir,rm,cp,readFile,writeFile } from 'node:fs/promises';
+import { mkdir,rm,cp,readFile } from 'node:fs/promises';
 const root=new URL('../',import.meta.url);
 const dist=new URL('dist/',root);
-const html=await readFile(new URL('public/index.html',root),'utf8');
-const {version}=JSON.parse(await readFile(new URL('package.json',root),'utf8'));
-if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Version must use X.Y.Z');
+await readFile(new URL('public/index.html',root));
 await rm(dist,{recursive:true,force:true});
 await mkdir(dist,{recursive:true});
 await cp(new URL('public/',root),dist,{recursive:true});
-await writeFile(new URL('index.html',dist),html.replaceAll('__APP_VERSION__',version));
-console.log(`Static UI v${version} built; Vercel API is in api/.`);
+console.log('Static UI built; Vercel API is in api/.');

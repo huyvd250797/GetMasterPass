@@ -1,25 +1,19 @@
 {
   "name": "master-password-helper",
-  "version": "2.1.1",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
     "start": "npm run dev",
     "build": "node scripts/build.mjs",
-    "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs version-test.mjs auth-test.mjs store-test.mjs auth-ui-test.mjs",
-    "db:setup": "node --env-file-if-exists=.env.local scripts/db-setup.mjs"
+    "test": "node --test ui-test.mjs api-test.mjs browser-flow-test.mjs"
   },
   "engines": {
     "node": "22.x"
   },
   "dependencies": {
-    "@neondatabase/serverless": "1.2.0",
     "@sparticuz/chromium": "153.0.0",
     "puppeteer-core": "25.11.0"
-  },
-  "devDependencies": {
-    "@electric-sql/pglite": "0.5.8",
-    "jsdom": "26.1.0"
   }
 }
