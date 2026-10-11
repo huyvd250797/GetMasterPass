@@ -18,7 +18,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const getDurationLabel = document.getElementById('get-duration-label');
     const masterState = document.getElementById('master-state');
     let requestStarted = 0, requestWallStarted = 0, requestMilliseconds = 0, requestClockRunning = false, requestClockTimer;
-    const formatDuration = ms => (Math.max(0,ms)/1000).toFixed(1).replace('.',',');
+    const formatDuration = ms => String(Math.floor(Math.max(0,ms)/1000));
     function elapsedRequest() {
       if (requestClockRunning) requestMilliseconds = Math.max(requestMilliseconds,0,performance.now()-requestStarted,Date.now()-requestWallStarted);
       return requestMilliseconds;

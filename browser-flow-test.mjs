@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectMaster,readMasterFromHrm,optimizeHrmPage,prepareHrmRuntime} from './lib/hrm-browser.mjs';
+import {collectMaster,readMasterFromHrm,optimizeHrmPage,prepareHrmRuntime,prepareHrmReader} from './lib/hrm-browser.mjs';
 
 function makePage({blocked=false,loginFails=false,popupState="absent",masterVisible=false,hoverOpens=true}={}) {
   let evaluations=0;const actions=[],waits=[];
@@ -86,6 +86,38 @@ test('cold dependencies import concurrently and a prepared runtime is reused wit
  const runtime=await preparing;
  const result=await readMasterFromHrm({LOCAL_CHROME_PATH:'/TEST-BINARY'},{runtime,loadPuppeteer:()=>{throw Error('Duplicate import');}});
  assert.equal(result.password,'TEST-ONLY');
+});
+
+test('local browser priming launches once without contacting HRM and warm priming skips runtime setup',async()=>{
+ const {createBrowserPool}=await import('./lib/browser-pool.mjs');const pool=createBrowserPool();
+ let launches=0,pages=0,closedPages=0,closedBrowsers=0,imports=0,binaries=0;const visits=[];
+ const browser={connected:true,defaultBrowserContext:()=>({overridePermissions:async()=>{}}),newPage:async()=>{
+  pages++;const {page,actions}=makePage();visits.push(actions);page.close=async()=>{closedPages++;};return page;
+ },close:async()=>{closedBrowsers++;}};
+ const options={browserPool:pool,platform:'linux',loadPuppeteer:async()=>{imports++;return {default:{launch:async()=>{launches++;return browser;}}};},
+  loadChromium:async()=>{imports++;return {default:{args:[],executablePath:async()=>{binaries++;return '/TEST';}}};}};
+ const env={VERCEL:'1',HRM_USERNAME:'TEST',HRM_PASSWORD:'TEST'};
+ try{
+  const runtime=await prepareHrmReader(env,options);
+  assert.equal(launches,1);assert.equal(pages,0);assert.equal(closedBrowsers,0);assert.equal(imports,2);assert.equal(binaries,1);
+  await readMasterFromHrm(env,{...options,runtime});assert.equal(launches,1);assert.equal(pages,1);assert.equal(closedPages,1);
+  const warmRuntime=await prepareHrmReader(env,options);
+  assert.equal(warmRuntime,undefined);assert.equal(imports,2);assert.equal(binaries,1);assert.equal(pages,1);
+  await readMasterFromHrm(env,{...options,runtime:warmRuntime});
+  assert.equal(launches,1);assert.equal(imports,2);assert.equal(closedPages,2);
+  assert.ok(visits.every(actions=>actions.includes('goto')&&actions.includes('getMaster')));
+ }finally{await pool.clear();}assert.equal(closedBrowsers,1);
+});
+
+test('priming with browser reuse disabled prepares the runtime and never double-launches Chromium',async()=>{
+ const {createBrowserPool}=await import('./lib/browser-pool.mjs');const pool=createBrowserPool();
+ const {page}=makePage();let launches=0,closed=0;
+ const browser={defaultBrowserContext:()=>({overridePermissions:async()=>{}}),newPage:async()=>page,close:async()=>{closed++;}};
+ const env={VERCEL:'1',HRM_BROWSER_REUSE:'0'};
+ const options={browserPool:pool,platform:'linux',loadPuppeteer:async()=>({default:{launch:async()=>{launches++;return browser;}}}),
+  loadChromium:async()=>({default:{args:[],executablePath:async()=>'/TEST'}})};
+ const runtime=await prepareHrmReader(env,options);assert.equal(launches,0);
+ await readMasterFromHrm(env,{...options,runtime});assert.equal(launches,1);assert.equal(closed,1);await pool.clear();
 });
 
 test('an absent or hidden expired-password notice is skipped without waiting',async()=>{

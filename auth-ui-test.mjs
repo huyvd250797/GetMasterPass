@@ -73,13 +73,13 @@ test('a master response finishing after logout is never copied or shown',async()
 });
 test('Get elapsed time follows the whole request across stages; duration remains after copy and clears at logout',async()=>{
  const h=await setup({streamMaster:true});try{
-  await h.login('tester');await h.click('get');assert.equal(h.$('get-elapsed').textContent,'0,0 giây');assert.equal(h.$('get-duration').hidden,true);
-  await h.advance(1250);assert.equal(h.$('get-elapsed').textContent,'1,3 giây');
-  await h.push({type:'progress',step:2,version:APP_VERSION});await h.advance(2500);assert.equal(h.$('get-elapsed').textContent,'3,8 giây');
-  await h.push({type:'progress',step:3,version:APP_VERSION});await h.advance(500);assert.equal(h.$('get-elapsed').textContent,'4,3 giây');
+  await h.login('tester');await h.click('get');assert.equal(h.$('get-elapsed').textContent,'0 giây');assert.equal(h.$('get-duration').hidden,true);
+  await h.advance(1250);assert.equal(h.$('get-elapsed').textContent,'1 giây');
+  await h.push({type:'progress',step:2,version:APP_VERSION});await h.advance(2500);assert.equal(h.$('get-elapsed').textContent,'3 giây');
+  await h.push({type:'progress',step:3,version:APP_VERSION});await h.advance(500);assert.equal(h.$('get-elapsed').textContent,'4 giây');
   await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-MASTER',remainingMs:90000,processingMs:4250}});await h.finish();
-  assert.equal(h.$('get-duration').hidden,false);assert.equal(h.$('get-duration-value').textContent,'4,3 giây');assert.equal(h.$('get-progress').hidden,true);
-  const count=h.requests.length;await h.advance(2000);await h.click('copy');assert.equal(h.requests.length,count);assert.equal(h.$('get-duration-value').textContent,'4,3 giây');
+  assert.equal(h.$('get-duration').hidden,false);assert.equal(h.$('get-duration-value').textContent,'4 giây');assert.equal(h.$('get-progress').hidden,true);
+  const count=h.requests.length;await h.advance(2000);await h.click('copy');assert.equal(h.requests.length,count);assert.equal(h.$('get-duration-value').textContent,'4 giây');
   await h.click('logout');assert.equal(h.$('get-duration').hidden,true);
  }finally{h.dom.window.close();}
 });
@@ -87,9 +87,22 @@ test('failed Get reports its elapsed duration and the next attempt starts at zer
  const h=await setup({streamMaster:true});try{
   await h.login('tester');await h.click('get');await h.advance(11250);
   await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_TIMEOUT'}});await h.finish();
-  assert.equal(h.$('get-duration-value').textContent,'11,3 giây');assert.match(h.$('get-duration-label').textContent,/chưa thành công/);assert.equal(h.$('master-state').dataset.state,'error');
-  await h.click('get');assert.equal(h.$('get-duration').hidden,true);assert.equal(h.$('get-elapsed').textContent,'0,0 giây');
+  assert.equal(h.$('get-duration-value').textContent,'11 giây');assert.match(h.$('get-duration-label').textContent,/chưa thành công/);assert.equal(h.$('master-state').dataset.state,'error');
+  await h.click('get');assert.equal(h.$('get-duration').hidden,true);assert.equal(h.$('get-elapsed').textContent,'0 giây');
   await h.click('logout');await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-LATE',remainingMs:90000,processingMs:0}});await h.finish();assert.equal(h.$('get-duration').hidden,true);assert.equal(h.copies.length,0);
+ }finally{h.dom.window.close();}
+});
+test('Get displays completed whole seconds at boundaries and freezes the same integer on success',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');
+  await h.advance(999);assert.equal(h.$('get-elapsed').textContent,'0 giây');
+  await h.advance(1,{runTimers:false});h.w.dispatchEvent(new h.w.Event('pageshow'));assert.equal(h.$('get-elapsed').textContent,'1 giây');
+  await h.advance(999);assert.equal(h.$('get-elapsed').textContent,'1 giây');
+  await h.advance(1,{runTimers:false});h.w.dispatchEvent(new h.w.Event('pageshow'));assert.equal(h.$('get-elapsed').textContent,'2 giây');
+  await h.advance(950);
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-MASTER',remainingMs:90000,processingMs:2950}});await h.finish();
+  assert.equal(h.$('get-duration-value').textContent,'2 giây');
+  await h.advance(5000);await h.click('copy');assert.equal(h.$('get-duration-value').textContent,'2 giây');
  }finally{h.dom.window.close();}
 });
 test('progress jumps do not change the clock; suspended callbacks catch up to actual elapsed time',async()=>{
@@ -98,18 +111,18 @@ test('progress jumps do not change the clock; suspended callbacks catch up to ac
   const before=h.$('get-elapsed').textContent;
   await h.push({type:'progress',step:3,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'95%');assert.equal(h.$('get-elapsed').textContent,before);
   await h.advance(15000,{runTimers:false});h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));
-  assert.equal(h.$('get-elapsed').textContent,'17,0 giây');assert.equal(h.$('get-progress-step').textContent,'95%');
+  assert.equal(h.$('get-elapsed').textContent,'17 giây');assert.equal(h.$('get-progress-step').textContent,'95%');
   await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-REAL-TIME',remainingMs:90000,processingMs:17000}});await h.finish();
-  assert.equal(h.$('get-duration-value').textContent,'17,0 giây');
+  assert.equal(h.$('get-duration-value').textContent,'17 giây');
  }finally{h.dom.window.close();}
 });
 test('wall elapsed time covers sleep even when the monotonic clock does not advance',async()=>{
  const h=await setup({streamMaster:true});try{
   await h.login('tester');await h.click('get');await h.advance(10250,{runTimers:false,wallOnly:true});
-  h.w.dispatchEvent(new h.w.Event('pageshow'));assert.equal(h.$('get-elapsed').textContent,'10,3 giây');
+  h.w.dispatchEvent(new h.w.Event('pageshow'));assert.equal(h.$('get-elapsed').textContent,'10 giây');
   await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-SLEEP',remainingMs:90000,processingMs:10250}});await h.finish();
-  assert.equal(h.$('get-duration-value').textContent,'10,3 giây');
-  await h.advance(5000);await h.click('copy');assert.equal(h.$('get-duration-value').textContent,'10,3 giây');
+  assert.equal(h.$('get-duration-value').textContent,'10 giây');
+  await h.advance(5000);await h.click('copy');assert.equal(h.$('get-duration-value').textContent,'10 giây');
  }finally{h.dom.window.close();}
 });
 test('configuration diagnostics appear on page load and failed login using only known labels',async()=>{

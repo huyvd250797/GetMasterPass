@@ -1,8 +1,18 @@
-# Master Password — v2.4.1
+# Master Password — v2.4.2
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
 
-## Thay đổi 2.4.1
+## Thay đổi 2.4.2
+
+- Footer hiển thị in đậm **© 2026 HuyVo. All rights reserved · v2.4.2**. Phiên bản lấy từ package.json khi build; vẫn dùng X.Y.Z và tăng phiên bản/tên ZIP mỗi lần giao source.
+- Thời gian đang Get và thời gian Get hoàn tất chỉ hiển thị **X giây**. Giữ đo millisecond theo timestamp thực bên trong, hiển thị số giây đã trôi qua bằng Math.floor, ví dụ 1.999 ms là 1 giây, 2.000 ms là 2 giây. Lượt cache nhanh dưới 1 giây hiển thị 0 giây. Progress % không quyết định số giây.
+- Khi cache thiếu/hết hạn, khởi động Chromium và cấp quyền clipboard cục bộ song song với truy vấn nhận lease/snapshot Neon. Trước khi nhận lease không tạo trang, truy cập HRM, nhập tài khoản hoặc lấy mã. Sau khi có lease mới dùng browser đã sẵn sàng để đi qua luồng HRM hiện có. Khác với 2.4.0/2.4.1, phần launch được chạy song song thay vì chỉ import/chuẩn bị binary.
+- Khi browser đang giữ lại còn hợp lệ, bước chuẩn bị không import lại dependency, không chuẩn bị binary và không launch mới; lần đọc sau khi mã hết hạn dùng browser/phiên HRM đó. Khi tắt HRM_BROWSER_REUSE, chỉ chuẩn bị runtime và launch đúng một lần sau lease.
+- Các instance đang tranh lease có thể cùng chuẩn bị browser cục bộ; chỉ chủ lease được đọc HRM. Cache hit có sẵn không khởi động browser. Nếu cache xuất hiện sau bước admission, browser chuẩn bị trước có thể được giữ idle cho lần sau; tái sử dụng browser làm tăng RAM như trước.
+- Giữ 4 lượt SQL khi đọc mã mới không tranh chấp và 2 lượt khi cache hit, kiểm tra quyền/audit và thời gian hiệu lực gốc. Không giảm timeout thành 10 giây. Mục tiêu dưới 10 giây chưa có số đo trên HRM/Vercel production để xác nhận; mức cải thiện phụ thuộc độ trễ DB, startup Chromium và HRM.
+- Không cần SQL migration hoặc biến môi trường mới từ 2.3.x/2.4.x. Đã kiểm tra 111 test và build; chưa kiểm tra HRM production hoặc render bằng browser thật.
+
+## Thay đổi 2.4.1 (lịch sử)
 
 - Gom icon và tên Master Password thành một hàng ở góc trên trái của app, giảm padding và khoảng trống đầu trang. Bỏ ASC | WORKSPACE và câu giới thiệu dưới tên app.
 - Bỏ hai dòng “Mã còn hiệu lực có thể copy lại ngay tại đây.” và “Phiên đăng nhập được kiểm tra cho mỗi lần Get”.
@@ -62,7 +72,7 @@ App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy
 
 1. Kiểm tra Origin/header/phiên bản, cookie, CSRF và cấu hình trước khi ghi DB.
 2. Một câu SQL xác thực phiên, trạng thái user/auth_version/config_stamp, đọc cache mã hóa và cấp quyền Get nguyên tử: một yêu cầu mỗi người tại một thời điểm, bắt đầu cách nhau ít nhất 10 giây. Ghi pending nếu được nhận, denied nếu bị giới hạn; phiên không hợp lệ không tạo gate/audit Get.
-3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, chuẩn bị runtime cục bộ song song với câu SQL nhận lease 55 giây/snapshot cache, rồi đọc HRM khi đã có lease và không còn cache hợp lệ: mượn browser còn hợp lệ hoặc mở mới, tạo trang mới, đăng nhập khi form yêu cầu, đóng thông báo đổi mật khẩu nếu có, mở menu rồi đọc clipboard/timer. Trang được đóng sau mỗi lần đọc; browser còn hợp lệ có thể được giữ cho lần sau.
+3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, chuẩn bị browser cục bộ song song với câu SQL nhận lease 55 giây/snapshot cache, rồi đọc HRM khi đã có lease và không còn cache hợp lệ: mượn browser đã sẵn sàng, tạo trang mới, đăng nhập khi form yêu cầu, đóng thông báo đổi mật khẩu nếu có, mở menu rồi đọc clipboard/timer. Trang được đóng sau mỗi lần đọc; browser còn hợp lệ có thể được giữ cho lần sau.
 4. Ghi cache mã hóa. Kiểm tra lại phiên/user và ghi issued trong cùng một câu SQL trước khi trả mã. Nếu phiên bị thu hồi trong lúc đọc HRM hoặc chưa ghi được audit thì không trả mã.
 5. Trừ thời gian xử lý/SQL và truyền phản hồi khỏi hiệu lực. Client copy, hiện toast, đếm giây; hết hạn hoặc đăng xuất xóa mã khỏi bộ nhớ/ô thủ công. Clipboard hệ điều hành không tự xóa.
 
@@ -99,7 +109,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 108 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 111 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 

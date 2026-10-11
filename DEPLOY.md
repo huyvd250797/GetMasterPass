@@ -1,12 +1,12 @@
-# Deploy Master Password v2.4.1
+# Deploy Master Password v2.4.2
 
-## Nâng cấp từ 2.3.x hoặc 2.4.0
+## Nâng cấp từ 2.3.x hoặc 2.4.0/2.4.1
 
-Giải nén **Master_Password_Web_v2.4.1.zip**, thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần chạy SQL hoặc thêm biến nếu 2.3.0 đã hoạt động. Kiểm tra footer và /api/version cùng là **2.4.1**.
+Giải nén **Master_Password_Web_v2.4.2.zip**, thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần chạy SQL hoặc thêm biến nếu 2.3.0 đã hoạt động. Kiểm tra footer và /api/version cùng là **2.4.2**.
 
-Bản này chuẩn bị Chromium song song với truy vấn lease/cache, giảm luồng đọc HRM mới từ 5 xuống 4 lượt SQL khi không tranh chấp; cache hit vẫn 2 lượt SQL. Giữ tái sử dụng Chromium/phiên HRM trên cùng instance. Giao diện mới hiển thị thời gian chờ và tổng thời gian Get. Mỗi Get vẫn kiểm tra quyền và ghi lịch sử riêng. Không cần thêm biến bắt buộc; giữ nguyên các biến hiện tại.
+Bản này chuẩn bị đầy đủ Chromium (gồm launch và quyền clipboard cục bộ) song song với truy vấn lease/cache. Không tạo trang hoặc truy cập HRM trước khi có lease. Browser còn hợp lệ bỏ qua import/chuẩn bị binary/launch cho lần sau khi mã hết hạn. Giữ 4 lượt SQL cho đọc HRM mới không tranh chấp; cache hit vẫn 2 lượt SQL. Nếu tắt reuse, chỉ chuẩn bị runtime và launch một lần sau lease. Giữ tái sử dụng Chromium/phiên HRM trên cùng instance. Giao diện mới hiển thị thời gian chờ và tổng thời gian Get. Mỗi Get vẫn kiểm tra quyền và ghi lịch sử riêng. Không cần thêm biến bắt buộc; giữ nguyên các biến hiện tại.
 
-Header gọn với icon và tên app ở góc trên trái. Đã bỏ ASC | WORKSPACE và hai dòng ghi chú theo yêu cầu. Đồng hồ Get cập nhật riêng mỗi 100 ms theo timestamp thực, không phụ thuộc %. Khi quay lại tab, số giây được cập nhật ngay; Copy lại không thay đổi thời gian Get vừa hoàn tất.
+Footer in đậm **© 2026 HuyVo. All rights reserved · v2.4.2**. Thời gian đang Get và đã Get chỉ hiển thị số giây nguyên đã trôi qua (ví dụ 2,9 giây hiển thị 2 giây), vẫn đo timestamp millisecond thực ở bên trong. Header gọn với icon và tên app ở góc trên trái. Đã bỏ ASC | WORKSPACE và hai dòng ghi chú theo yêu cầu. Đồng hồ Get cập nhật riêng mỗi 100 ms theo timestamp thực, không phụ thuộc %. Khi quay lại tab, số giây được cập nhật ngay; Copy lại không thay đổi thời gian Get vừa hoàn tất.
 
 Get có thanh phần trăm tăng dần, ghi rõ “Tiến độ ước tính”. Khi chờ HRM, % tăng chậm dần và dừng dưới 90%; khi server đã đọc mã và đang kiểm tra/ghi audit, chuyển lên 95%, luôn dưới 100%. Chỉ đạt 100% khi nhận kết quả hợp lệ. % không dự đoán số giây còn lại. Lỗi/đăng xuất ẩn và reset thanh. Toast/copy/countdown giữ như trước. Không có dòng “Đang kết nối HRM”.
 
@@ -14,7 +14,7 @@ Dùng một POST streaming để gửi trạng thái; không polling hoặc thê
 
 ## Cài mới hoặc nâng cấp từ 2.2.0
 
-1. Giải nén **Master_Password_Web_v2.4.1.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
+1. Giải nén **Master_Password_Web_v2.4.2.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
 2. Giữ nguyên sáu biến server đang có: HRM_USERNAME, HRM_PASSWORD, ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET, DATABASE_URL. Không cần biến bắt buộc mới; cache dùng chung mặc định bật.
 3. Thay source trong checkout GitHub đang nối Vercel. ZIP có package.json ở gốc. Không đưa .env.local hoặc secret vào Git.
 
@@ -24,14 +24,14 @@ npm test
 npm run build
 git status
 git add .
-git commit -m "Compact app header and separate real Get elapsed clock v2.4.1"
+git commit -m "Parallel browser startup and integer Get clock v2.4.2"
 git push
 ```
 
 Nếu remote có commit mới, pull và xử lý xung đột; không force push. Vercel phải build commit mới, không Redeploy commit 2.2.0.
 
 4. Cấu hình Framework **Other**, Root Directory chứa package.json, Build `npm run build`, Output `dist`, Node.js **22.x**. vercel.json đã đóng gói Chromium và giới hạn API Get 60 giây. Build không truy cập DB/HRM.
-5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.4.1**; domain Production cần trỏ vào deployment này.
+5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.4.2**; domain Production cần trỏ vào deployment này.
 
 ## Cài mới và biến môi trường
 
@@ -61,7 +61,7 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 - Chưa đăng nhập: form login; Get không có phiên trả 401 và không đọc HRM.
 - Admin: tạo/khóa/mở/đặt lại mật khẩu user; xem lịch sử. Không có tab đổi mật khẩu của admin; gọi action change_password bằng phiên admin cũng trả 403.
 - User: Get tự copy và hiện toast; Copy lại hiện toast mới, giữ countdown và không tạo lượt Get mới. Hết hạn/đăng xuất xóa mã khỏi bộ nhớ UI.
-- Không có dòng kết nối HRM hoặc câu “Lấy mật khẩu và copy ngay vào clipboard.” Get đang chạy có nút “Đang lấy…”, progress % ước tính và đồng hồ “Đã chờ X,X giây”. Sau khi nhận mã có thời gian Get; Copy lại giữ nguyên số đo, countdown và không gọi Get mới.
+- Không có dòng kết nối HRM hoặc câu “Lấy mật khẩu và copy ngay vào clipboard.” Get đang chạy có nút “Đang lấy…”, progress % ước tính và đồng hồ “Đã chờ X giây”. Sau khi nhận mã có thời gian Get; Copy lại giữ nguyên số đo, countdown và không gọi Get mới.
 - User không có tab lịch sử; GET/POST `/api/history` bằng phiên user phải trả 403.
 - User vào Đổi mật khẩu, nhập mật khẩu hiện tại và mật khẩu mới ≥4 ký tự, xác nhận. Thành công tự đăng xuất mọi phiên, đăng nhập lại bằng mật khẩu mới. Mật khẩu cũ sai không thay đổi tài khoản.
 - Admin xóa một dòng: xác nhận hoặc hủy. Xóa tất cả: áp dụng mọi người và cả lịch sử ngoài bộ lọc; pending chưa quá 65 giây được giữ để Get đang chạy hoàn tất. Các audit đăng nhập/tài khoản/xóa lịch sử được giữ. Số lần Get và thống kê sẽ giảm theo lịch sử bị xóa.
@@ -82,7 +82,7 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 2. Mỗi nhóm cần vài lần đo để thấy cả cold start và instance đã hoạt động. Mốc 10 giây là mục tiêu, chưa có dữ liệu production để bảo đảm. Thời gian UI gồm click → nhận/kiểm tra mã; không bao gồm cấp quyền clipboard. processingMs trong log là thời gian server, có thể thấp hơn UI do mạng/cold start.
 3. Để lại mặc định các lớp cache và browser reuse; kiểm tra Function cùng/gần region Neon. Source không tự đổi vùng hoặc tăng cấu hình trả phí. Xem thiết lập Fluid compute/CPU trong Vercel nếu cold start còn chiếm phần lớn thời gian: https://vercel.com/docs/fluid-compute và https://vercel.com/docs/functions/configuring-functions/memory.
 4. Nếu vượt 10 giây, gửi thời gian UI và một dòng log master_request_completed chỉ có source/readerMs/processingMs/version/requestId để phân tích. Không gửi master, mật khẩu HRM, DATABASE_URL hoặc SESSION_SECRET.
-5. Bản này đã qua 108 kiểm thử và build trên Node 24; Vercel target Node 22.x. Chưa chạy HRM/Neon production end-to-end hoặc kiểm tra giao diện render bằng browser thật.
+5. Bản này đã qua 111 kiểm thử và build trên Node 24; Vercel target Node 22.x. Chưa chạy HRM/Neon production end-to-end hoặc kiểm tra giao diện render bằng browser thật.
 
 Browser được giữ tối đa 10 phút không sử dụng và tối đa 30 phút từ khi khởi động; mỗi Get dùng trang mới và đóng trang. Instance mới/mất kết nối/lỗi/đổi credential sẽ mở browser mới. HRM hiện form đăng nhập thì đăng nhập lại bình thường. Cookies không được xuất vào Neon/log/API. Nếu thấy RAM tăng hoặc HRM không tương thích với phiên browser giữ lại, đặt `HRM_BROWSER_REUSE=0` và deploy lại. Không có đảm bảo instance/browser luôn được giữ giữa các Get.
 
@@ -102,6 +102,6 @@ Cache hết hạn bị từ chối nhưng ciphertext có thể còn trong bảng
 | HISTORY_NOT_DELETABLE | Dòng đang xử lý hoặc đã xóa; tải lại lịch sử. |
 | RATE_LIMITED | Login: 8/15 phút mỗi username, 60/phút toàn app; Get: ít nhất 10 giây/lần và một lượt đang chạy; đổi mật khẩu: 5/15 phút mỗi user; xóa lịch sử: 20/phút. |
 | TRY_AGAIN | Đang chờ instance khác đọc HRM hoặc lease quá lâu; thử lại sau vài giây. |
-| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.4.1. |
+| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.4.2. |
 
 Nếu HRM lỗi, chỉ gửi error/stage/reason/requestId. Các deployment cũ vẫn có source/config cũ; cần quản lý các URL cũ riêng. Bản này chưa deploy hoặc kiểm tra Neon/HRM production thực tế.

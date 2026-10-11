@@ -41,12 +41,12 @@
     <section id="get-progress" class="get-progress" hidden aria-label="Tiến trình lấy mật khẩu">
       <div class="get-progress-head"><span id="get-progress-label" role="status" aria-live="polite">Chuẩn bị yêu cầu…</span><span id="get-progress-step">0%</span></div>
       <div id="get-progress-track" class="track" role="progressbar" aria-label="Tiến độ ước tính" aria-valuemin="0" aria-valuemax="100" aria-describedby="get-progress-hint" aria-valuenow="0"><div id="get-progress-bar"></div></div>
-      <div class="get-progress-meta"><p id="get-progress-hint" class="get-progress-hint">Tiến độ ước tính</p><p class="get-clock">Đã chờ <strong id="get-elapsed">0,0 giây</strong></p></div>
+      <div class="get-progress-meta"><p id="get-progress-hint" class="get-progress-hint">Tiến độ ước tính</p><p class="get-clock">Đã chờ <strong id="get-elapsed">0 giây</strong></p></div>
     </section>
     <button id="copy" type="button" hidden>Copy lại master password</button>
     <textarea id="manual" rows="2" readonly hidden aria-label="Mật khẩu để copy thủ công" spellcheck="false" autocomplete="off"></textarea>
     <p id="status" role="status" aria-live="polite"></p>
-    <div id="get-duration" class="duration-card" role="status" aria-live="polite" hidden><span id="get-duration-label">Lần Get vừa hoàn tất</span><strong id="get-duration-value">0,0 giây</strong></div>
+    <div id="get-duration" class="duration-card" role="status" aria-live="polite" hidden><span id="get-duration-label">Lần Get vừa hoàn tất</span><strong id="get-duration-value">0 giây</strong></div>
         </div>
       </section>
       <section id="history-panel" hidden>
@@ -101,7 +101,7 @@
         <div class="toolbar"><button id="reset-submit" type="submit">Lưu mật khẩu</button><button id="reset-cancel" class="secondary" type="button">Hủy</button></div>
       </form>
     </dialog>
-    <footer>ASC · Tiện ích mật khẩu master · <span id="app-version">v__APP_VERSION__</span><span id="server-version"></span></footer>
+    <footer><strong>© 2026 HuyVo. All rights reserved · <span id="app-version">v__APP_VERSION__</span></strong><span id="server-version"></span></footer>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="history-delete-dialog"><form id="history-delete-form">
