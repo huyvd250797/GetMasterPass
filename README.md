@@ -1,6 +1,15 @@
-# Master Password — v2.3.0
+# Master Password — v2.3.1
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
+
+## Thay đổi 2.3.1
+
+- Thanh tiến trình riêng khi Get đang chạy, có hiệu ứng chuyển động và hỗ trợ giảm chuyển động/accessibility.
+- Các mốc 1/4, 2/4, 3/4 đến từ server trong cùng POST: đã xác thực → được nhận yêu cầu và đang đọc mã → đã đọc mã, đang kiểm tra lại phiên/ghi audit. Client hoàn tất 4/4 chỉ sau khi nhận kết quả hợp lệ; sau đó copy/toast và chuyển sang countdown như trước.
+- Đây là tiến trình theo bước, không phải phần trăm thời gian hay dự đoán số giây. HRM chậm có thể giữ ở 2/4; không tự chạy gần đầy. Cache hit có thể chuyển rất nhanh. Không thêm polling, truy vấn DB hay độ trễ chờ hiệu ứng.
+- Khi lỗi, hết thời gian hoặc đăng xuất, thanh ẩn/reset; không nhận/copy kết quả thuộc phiên cũ. Get bị chặn bấm lặp trong lúc đang lấy.
+- Frontend yêu cầu application/x-ndjson. Các dòng progress chỉ chứa type/step/version. Dòng result chứa status và data; status trong dòng này là kết quả API thực, vì HTTP stream đã mở có status 200. Mã chỉ nằm trong result sau xác thực và audit như trước. Client không yêu cầu streaming vẫn nhận JSON/HTTP status cũ.
+- Giữ nguyên schema của 2.3.0, không cần migration mới hoặc biến môi trường mới.
 
 ## Thay đổi 2.3.0
 
@@ -51,7 +60,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 79 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 86 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 

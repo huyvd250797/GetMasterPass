@@ -7,9 +7,9 @@ const html = await readFile(new URL('./public/index.html', import.meta.url), 'ut
 const script = await readFile(new URL('./public/master.js', import.meta.url), 'utf8');
 function setup({copyFails=false,configured=true,processingMs=0,transitMs=0,diagnostic,backendVersion=version,versionAvailable=true,responseVersion=version,versionLatency=0}={}) {
   let now = 0, tick, copies = [], notifications=[], urls=[], requests = 0;
-  const elements = Object.fromEntries(['get','copy','active','seconds','progress','status','manual','server-version','app-version'].map(id => [id,{
+  const elements = Object.fromEntries(['get','copy','active','seconds','progress','status','manual','server-version','app-version','get-progress','get-progress-bar','get-progress-track','get-progress-label','get-progress-step'].map(id => [id,{
     textContent:id==='app-version'?'v'+version:'', value:'', hidden:['copy','active','manual'].includes(id), disabled:false, style:{},
-    addEventListener(type,fn){this[type]=fn;}
+    setAttribute(){},addEventListener(type,fn){this[type]=fn;}
   }]));
   const context = {
     document:{getElementById:id=>elements[id],addEventListener(){}}, window:{MasterNotify:{success:s=>notifications.push(s),error:s=>notifications.push(s)},MasterSession:{user:{id:'test'},csrfToken:'TEST-CSRF'},addEventListener(){}},

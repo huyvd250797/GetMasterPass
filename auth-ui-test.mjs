@@ -6,11 +6,11 @@ import {APP_VERSION} from './lib/app-version.mjs';
 const html=(await readFile(new URL('./public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',APP_VERSION);
 const scripts=await Promise.all(['notifications.js','master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
 async function flush(){for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));}
-async function setup({deferredMaster=false,configIssues=null}={}){
+async function setup({deferredMaster=false,configIssues=null,streamMaster=false}={}){
  const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only'}),w=dom.window;
- const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster;
+ const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
- w.AbortSignal=AbortSignal;w.setInterval=()=>1;w.clearInterval=()=>{};
+ w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;w.setInterval=()=>1;w.clearInterval=()=>{};
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async s=>copies.push(s)}});
  const response=(status,body)=>new Response(JSON.stringify({...body,version:APP_VERSION}),{status});
@@ -32,6 +32,7 @@ async function setup({deferredMaster=false,configIssues=null}={}){
   if(path.startsWith('/api/history')){if(body){assert.equal(current.role,'admin');const count=body.action==='delete_all'?history.length:1;history.splice(0,body.action==='delete_all'?history.length:1);return response(200,{ok:true,deleted:count});}return response(200,{items:history,stats:{total:history.length,issued:history.length,failed:0},offset:0,pageSize:50});}
   if(path==='/api/master-password'){
    assert.ok(current);assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);
+   if(streamMaster)return new Response(new ReadableStream({start(controller){streamController=controller;}}),{headers:{'Content-Type':'application/x-ndjson'}});
    if(deferredMaster)return new Promise(r=>{resolveMaster=()=>r(response(200,{password:'TEST-MASTER',remainingMs:90000,processingMs:0}));});
    return response(200,{password:'TEST-MASTER',remainingMs:90000,processingMs:0});
   }throw new Error('Unexpected request');
@@ -41,7 +42,7 @@ async function setup({deferredMaster=false,configIssues=null}={}){
  async function submit(id){$(id).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await flush();}
  async function login(username){$('login-username').value=username;$('login-password').value='TEST-ONLY-PASSWORD';await submit('login-form');}
  async function click(id){$(id).click();await flush();}
- return {dom,w,$,requests,copies,users,history,login,click,submit,resolve:()=>resolveMaster()};
+ return {dom,w,$,requests,copies,users,history,login,click,submit,resolve:()=>resolveMaster(),push:async item=>{streamController.enqueue(new TextEncoder().encode(JSON.stringify(item)+'\n'));await flush();},finish:async()=>{streamController.close();await flush();},chunk:async text=>{streamController.enqueue(new TextEncoder().encode(text));await flush();}};
 }
 test('UI login, admin create/lock/reset, history and logout clear private content',async()=>{
  const h=await setup();try{
@@ -112,4 +113,29 @@ test('admin confirms or cancels single-row and all-history deletion',async()=>{
   await h.click('history-delete-all');assert.match(h.$('history-delete-description').textContent,/ngoài bộ lọc/);await h.submit('history-delete-form');
   assert.equal(h.requests.find(r=>r.body?.action==='delete_all').body.confirm,'DELETE_ALL_GET_HISTORY');
  }finally{h.dom.window.close();}
+});
+test('streamed milestones advance only on server events, block duplicate Get and complete on the valid result',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');assert.equal(h.$('get-progress').hidden,false);assert.equal(h.$('get-progress-step').textContent,'0/4');assert.equal(h.$('get').disabled,true);
+  const requests=h.requests.length;await h.click('get');assert.equal(h.requests.length,requests);
+  await h.push({type:'progress',step:2,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'2/4');assert.equal(h.$('get-progress-track').getAttribute('aria-valuenow'),'2');
+  assert.equal(h.$('get-progress-bar').style.width,'50%');assert.equal(h.copies.length,0);
+  await h.push({type:'progress',step:1,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'2/4');
+  await h.chunk('{"type":"progress","step":');assert.equal(h.$('get-progress-step').textContent,'2/4');
+  await h.chunk('3,"version":"'+APP_VERSION+'"}\n');assert.equal(h.$('get-progress-step').textContent,'3/4');assert.match(h.$('get-progress-label').textContent,/Đang hoàn tất/);
+  assert.equal(h.$('get-progress-bar').style.width,'75%');
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-STREAM-UI',remainingMs:90000,processingMs:0}});await h.finish();
+  assert.deepEqual(h.copies,['TEST-STREAM-UI']);assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get').disabled,false);assert.match(h.$('toast').textContent,/Đã lấy và copy/);
+ }finally{h.dom.window.close();}
+});
+test('failed or truncated progress never reaches completion; logout discards late milestones and results',async()=>{
+ for(const mode of ['failed','truncated','logout']){
+  const h=await setup({streamMaster:true});try{
+   await h.login('tester');await h.click('get');await h.push({type:'progress',step:2,version:APP_VERSION});
+   if(mode==='failed')await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_TIMEOUT'}});
+   if(mode==='logout'){await h.click('logout');await h.push({type:'progress',step:3,version:APP_VERSION});await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-LATE-SECRET',remainingMs:90000,processingMs:0}});}
+   await h.finish();assert.equal(h.copies.length,0);assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get').disabled,false);
+   if(mode!=='logout')assert.ok(h.$('status').textContent.length>0);else assert.equal(h.w.MasterSession,null);
+  }finally{h.dom.window.close();}
+ }
 });

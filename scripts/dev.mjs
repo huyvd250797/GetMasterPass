@@ -2,7 +2,7 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {Readable} from 'node:stream';
 import {handleVersionRequest} from '../lib/version-api.mjs';
-import {handleMasterRequest} from '../lib/master-api.mjs';
+import {handleMasterDelivery} from '../lib/master-delivery.mjs';
 import {handleAuthRequest,handleAdminRequest,handleHistoryRequest} from '../lib/auth-api.mjs';
 import {createMasterReader} from '../lib/master-cache.mjs';
 import {readMasterFromHrm} from '../lib/hrm-browser.mjs';
@@ -24,13 +24,14 @@ http.createServer(async(req,res)=>{
    res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY'});
    res.end(path==='/'?html:path==='/master.js'?masterJs:path==='/notifications.js'?notifyJs:authJs);return;
   }
-  const handlers={'/api/version':handleVersionRequest,'/api/auth':handleAuthRequest,'/api/admin':handleAdminRequest,'/api/history':handleHistoryRequest,'/api/master-password':handleMasterRequest};
+  const handlers={'/api/version':handleVersionRequest,'/api/auth':handleAuthRequest,'/api/admin':handleAdminRequest,'/api/history':handleHistoryRequest,'/api/master-password':handleMasterDelivery};
   if(!handlers[path]){res.writeHead(404);res.end();return;}
   const headers=new Headers();for(const [name,value] of Object.entries(req.headers))if(value!==undefined)headers.set(name,Array.isArray(value)?value.join(','):value);
   const init={method:req.method,headers};if(!['GET','HEAD'].includes(req.method)){init.body=Readable.toWeb(req);init.duplex='half';}
   const request=new Request(`http://${host}${req.url}`,init);
   const env={...process.env,VERCEL:'1'};
   const result=await handlers[path](request,{env,reader:localMasterReader});
-  res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());
+  res.writeHead(result.status,Object.fromEntries(result.headers));
+  for await(const chunk of Readable.fromWeb(result.body))res.write(chunk);res.end();
  }catch{res.writeHead(500,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({error:'SERVER_ERROR',version}));}
 }).listen(port,'127.0.0.1',()=>console.log(`Open http://${host}`));

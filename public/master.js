@@ -7,10 +7,53 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const progress = document.getElementById('progress');
     const status = document.getElementById('status');
     const manual = document.getElementById('manual');
+    const getProgress = document.getElementById('get-progress');
+    const getProgressBar = document.getElementById('get-progress-bar');
+    const getProgressTrack = document.getElementById('get-progress-track');
+    const getProgressLabel = document.getElementById('get-progress-label');
+    const getProgressStep = document.getElementById('get-progress-step');
+    let getStep = 0, getEpoch = 0;
+    function fetching(step) {
+      if (!Number.isInteger(step) || step < getStep || step > 4) return;
+      getStep = step; getProgress.hidden = false;
+      getProgressBar.style.width = `${step * 25}%`;
+      getProgressTrack.setAttribute('aria-valuenow', String(step));
+      getProgressTrack.setAttribute('aria-busy', String(step < 4));
+      getProgressStep.textContent = `${step}/4`;
+      getProgressLabel.textContent = ['Chuẩn bị yêu cầu…','Đang xử lý yêu cầu…','Đang lấy mật khẩu…','Đang hoàn tất…','Đã nhận mật khẩu'][step];
+    }
+    function clearFetching() {
+      getProgress.hidden = true; getStep = 0; getProgressBar.style.width = '0%';
+      getProgressTrack.setAttribute('aria-valuenow', '0');getProgressTrack.setAttribute('aria-busy', 'false');
+      getProgressStep.textContent = '0/4';getProgressLabel.textContent = '';
+    }
+    async function readResult(response, onProgress) {
+      if (!response.headers?.get('content-type')?.includes('application/x-ndjson')) return {status:response.status,ok:response.ok,data:await response.json()};
+      if (!response.body?.getReader) throw new Error('API_INVALID_RESPONSE');
+      const reader = response.body.getReader(), decoder = new TextDecoder();let pending = '', result;
+      function line(value) {
+        if (!value.trim()) return;
+        const item = JSON.parse(value);
+        if (item.version && item.version !== APP_VERSION) throw new Error('VERSION_MISMATCH');
+        if (item.type === 'progress' && !result && Number.isInteger(item.step) && item.step >= 1 && item.step <= 3) onProgress(item.step);
+        else if (item.type === 'result' && !result && Number.isInteger(item.status) && item.status >= 200 && item.status <= 599 && item.data && typeof item.data === 'object') result = {status:item.status,ok:item.status >= 200 && item.status < 300,data:item.data};
+        else throw new Error('API_INVALID_RESPONSE');
+      }
+      try {
+        while (true) {
+          const {done,value} = await reader.read();pending += done ? decoder.decode() : decoder.decode(value,{stream:true});
+          if (pending.length > 32768) throw new Error('API_INVALID_RESPONSE');
+          const lines = pending.split('\n');pending = lines.pop();for (const value of lines) line(value);
+          if (done) {if (pending) line(pending);break;}
+        }
+        if (!result) throw new Error('API_INVALID_RESPONSE');return result;
+      } finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
+    }
     let secret = '', lifetime = 0, wallStart = 0, monotonicStart = 0, timer, masterEpoch = 0;
     const remaining = () => Math.max(0, lifetime - Math.max(Date.now() - wallStart, performance.now() - monotonicStart));
     const message = (text, type = '') => {status.textContent = text; status.className = type;};
     function expire() {
+      getEpoch++;clearFetching();
       masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
       copyButton.hidden = true; copyButton.disabled = false;
       button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
@@ -51,29 +94,34 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       const session = window.MasterSession;
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
+      if (button.disabled) return;
+      const requestEpoch = ++getEpoch;getStep = 0;fetching(0);
       button.disabled = true; button.textContent = 'Đang lấy…'; message('');
       let start = performance.now();
       try {
         // Server validates X-App-Version before HRM work; no extra preflight round-trip.
         const response = await fetch('/api/master-password', {
-          method:'POST', headers:{'X-Master-Request':'1','X-App-Version':APP_VERSION,'X-CSRF-Token':session.csrfToken}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(65000)
+          method:'POST', headers:{Accept:'application/x-ndjson','X-Master-Request':'1','X-App-Version':APP_VERSION,'X-CSRF-Token':session.csrfToken}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(65000)
         });
-        let data;
-        try { data = await response.json(); } catch { throw new Error('API_INVALID_RESPONSE'); }
-        if (window.MasterSession !== session) return;
-        if (response.status === 401) {window.MasterAccess?.requireLogin(); throw new Error('UNAUTHENTICATED');}
+        let result;
+        try { result = await readResult(response, step => {if (window.MasterSession === session && getEpoch === requestEpoch) fetching(step);}); } catch (error) {if (error.message === 'VERSION_MISMATCH') throw error;throw new Error('API_INVALID_RESPONSE');}
+        const {data} = result;
+        if (window.MasterSession !== session || getEpoch !== requestEpoch) return;
+        if (result.status === 401) {window.MasterAccess?.requireLogin(); throw new Error('UNAUTHENTICATED');}
         if (data.version !== APP_VERSION) throw new Error('VERSION_MISMATCH');
         serverVersion.textContent = ` · Server v${data.version}`;
-        if (!response.ok) throw Object.assign(new Error(data.error || 'HRM_UNAVAILABLE'),{diagnostic:data});
+        if (!result.ok) throw Object.assign(new Error(data.error || 'HRM_UNAVAILABLE'),{diagnostic:data});
         const processing = Number.isFinite(data.processingMs) && data.processingMs >= 0 ? data.processingMs : 0;
         const transit = Math.max(0, performance.now() - start - processing);
         const ms = data.remainingMs - transit;
         if (typeof data.password !== 'string' || !data.password.trim() || !Number.isFinite(ms) || ms < 1000 || ms > 300000) throw new Error('INVALID_RESPONSE');
+        fetching(4);
         masterEpoch++; secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
         button.hidden = true; copyButton.hidden = false;
         active.hidden = false; tick(); clearInterval(timer); timer = setInterval(tick, 250);
         await copy(true);
       } catch (error) {
+        if (window.MasterSession !== session || getEpoch !== requestEpoch) return;
         const errors = {
           UNAUTHENTICATED:'Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.',
           RATE_LIMITED:'Đang có yêu cầu lấy mã hoặc bạn thao tác quá nhanh. Đợi ít nhất 10 giây.',
@@ -97,7 +145,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
           HRM_CONNECTION_FAILED:'Server không kết nối được đến HRM.',
           HRM_ACCESS_DENIED:'HRM từ chối truy cập từ server.',
           CLIPBOARD_UNAVAILABLE:'Clipboard của trình duyệt server chưa hoạt động.',
-          API_INVALID_RESPONSE:'API không trả JSON. Kiểm tra deployment và Runtime Logs.',
+          API_INVALID_RESPONSE:'Server chưa trả kết quả hoàn chỉnh. Kiểm tra deployment và thử lại.',
           HRM_UNAVAILABLE:'Backend gặp lỗi khi lấy mã HRM.',
           BROWSER_UNAVAILABLE:'Server chưa khởi chạy được trình duyệt HRM.',
           INVALID_CONFIGURATION:'Cấu hình API HRM chưa hợp lệ.',
@@ -113,7 +161,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
           ?window.MasterAccess.errorText(error):errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.';
         message(description+details, 'error');
         button.textContent = 'Get master password';
-      } finally {button.disabled = false;}
+      } finally {if (getEpoch === requestEpoch) {clearFetching();button.disabled = false;}}
     });
     document.addEventListener('visibilitychange', () => {if (secret) tick();});
     window.addEventListener('pageshow', () => {if (secret) tick();});

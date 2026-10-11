@@ -1,8 +1,16 @@
-# Deploy Master Password v2.3.0
+# Deploy Master Password v2.3.1
 
-## Nâng cấp từ 2.2.0
+## Nâng cấp từ 2.3.0
 
-1. Giải nén **Master_Password_Web_v2.3.0.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
+Giải nén **Master_Password_Web_v2.3.1.zip**, thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần chạy SQL hoặc thêm biến nếu 2.3.0 đã hoạt động. Kiểm tra footer và /api/version cùng là **2.3.1**.
+
+Get có thanh tiến trình theo bốn bước. 1/4–3/4 là trạng thái server thực, 4/4 là client đã nhận mã hợp lệ; không phải ước tính thời gian. Lỗi/đăng xuất ẩn và reset thanh. Toast/copy/countdown giữ như trước. Không có dòng “Đang kết nối HRM”.
+
+Dùng một POST streaming để gửi trạng thái; không polling hoặc thêm truy vấn Neon. Khi phân tích response bằng DevTools, stream NDJSON có HTTP 200 sau khi mở; đọc dòng cuối type=result, trường status/data để biết thành công hay lỗi. Request JSON thông thường vẫn có HTTP status như trước. Chưa kiểm tra streaming trên deployment Vercel thật; bộ test đã xác nhận các mốc đến trước kết quả, và lỗi audit không trả master.
+
+## Cài mới hoặc nâng cấp từ 2.2.0
+
+1. Giải nén **Master_Password_Web_v2.3.1.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
 2. Giữ nguyên sáu biến server đang có: HRM_USERNAME, HRM_PASSWORD, ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET, DATABASE_URL. Không cần biến bắt buộc mới; cache dùng chung mặc định bật.
 3. Thay source trong checkout GitHub đang nối Vercel. ZIP có package.json ở gốc. Không đưa .env.local hoặc secret vào Git.
 
@@ -12,14 +20,14 @@ npm test
 npm run build
 git status
 git add .
-git commit -m "Improve shared master caching and account controls v2.3.0"
+git commit -m "Improve shared master caching and account controls and live progress v2.3.1"
 git push
 ```
 
 Nếu remote có commit mới, pull và xử lý xung đột; không force push. Vercel phải build commit mới, không Redeploy commit 2.2.0.
 
 4. Cấu hình Framework **Other**, Root Directory chứa package.json, Build `npm run build`, Output `dist`, Node.js **22.x**. vercel.json đã đóng gói Chromium và giới hạn API Get 60 giây. Build không truy cập DB/HRM.
-5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.3.0**; domain Production cần trỏ vào deployment này.
+5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.3.1**; domain Production cần trỏ vào deployment này.
 
 ## Cài mới và biến môi trường
 
@@ -80,6 +88,6 @@ Cache hết hạn bị từ chối nhưng ciphertext có thể còn trong bảng
 | HISTORY_NOT_DELETABLE | Dòng đang xử lý hoặc đã xóa; tải lại lịch sử. |
 | RATE_LIMITED | Login: 8/15 phút mỗi username, 60/phút toàn app; Get: ít nhất 10 giây/lần và một lượt đang chạy; đổi mật khẩu: 5/15 phút mỗi user; xóa lịch sử: 20/phút. |
 | TRY_AGAIN | Đang chờ instance khác đọc HRM hoặc lease quá lâu; thử lại sau vài giây. |
-| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.3.0. |
+| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.3.1. |
 
 Nếu HRM lỗi, chỉ gửi error/stage/reason/requestId. Các deployment cũ vẫn có source/config cũ; cần quản lý các URL cũ riêng. Bản này chưa deploy hoặc kiểm tra Neon/HRM production thực tế.

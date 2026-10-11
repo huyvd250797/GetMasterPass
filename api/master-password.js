@@ -1,2 +1,2 @@
-import { handleMasterRequest } from '../lib/master-api.mjs';
-export default {fetch(request) {return handleMasterRequest(request);}};
+import {handleMasterDelivery} from '../lib/master-delivery.mjs';
+export default {fetch(request){return handleMasterDelivery(request);}};
