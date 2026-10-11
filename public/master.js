@@ -12,20 +12,33 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const getProgressTrack = document.getElementById('get-progress-track');
     const getProgressLabel = document.getElementById('get-progress-label');
     const getProgressStep = document.getElementById('get-progress-step');
-    let getStep = 0, getEpoch = 0;
+    let getStep = 0, getEpoch = 0, getPercent = 0, getStarted = 0, getTimer;
+    const getRanges = [[3,12,5000],[15,24,5000],[30,90,20000],[95,99,6000]];
+    function renderFetching() {
+      if (getProgress.hidden) return;
+      const range = getRanges[getStep];
+      const elapsed = Math.max(0,performance.now() - getStarted);
+      const estimate = getStep === 4 ? 100 : Math.min(99,Math.floor(range[0] + (range[1] - range[0]) * (1 - Math.exp(-elapsed / range[2]))));
+      getPercent = Math.max(getPercent,estimate);
+      getProgressBar.style.width = `${getPercent}%`;
+      getProgressTrack.setAttribute('aria-valuenow', String(getPercent));
+      getProgressTrack.setAttribute('aria-busy', String(getStep < 4));
+      getProgressStep.textContent = `${getPercent}%`;
+    }
     function fetching(step) {
       if (!Number.isInteger(step) || step < getStep || step > 4) return;
+      if (step !== getStep || getTimer === undefined) getStarted = performance.now();
       getStep = step; getProgress.hidden = false;
-      getProgressBar.style.width = `${step * 25}%`;
-      getProgressTrack.setAttribute('aria-valuenow', String(step));
-      getProgressTrack.setAttribute('aria-busy', String(step < 4));
-      getProgressStep.textContent = `${step}/4`;
       getProgressLabel.textContent = ['Chuẩn bị yêu cầu…','Đang xử lý yêu cầu…','Đang lấy mật khẩu…','Đang hoàn tất…','Đã nhận mật khẩu'][step];
+      renderFetching();
+      if (step === 4) {clearInterval(getTimer);getTimer = undefined;}
+      else if (getTimer === undefined) getTimer = setInterval(renderFetching,250);
     }
     function clearFetching() {
-      getProgress.hidden = true; getStep = 0; getProgressBar.style.width = '0%';
+      clearInterval(getTimer);getTimer = undefined;
+      getProgress.hidden = true;getStep = 0;getPercent = 0;getStarted = 0;getProgressBar.style.width = '0%';
       getProgressTrack.setAttribute('aria-valuenow', '0');getProgressTrack.setAttribute('aria-busy', 'false');
-      getProgressStep.textContent = '0/4';getProgressLabel.textContent = '';
+      getProgressStep.textContent = '0%';getProgressLabel.textContent = '';
     }
     async function readResult(response, onProgress) {
       if (!response.headers?.get('content-type')?.includes('application/x-ndjson')) return {status:response.status,ok:response.ok,data:await response.json()};
@@ -95,7 +108,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
       if (button.disabled) return;
-      const requestEpoch = ++getEpoch;getStep = 0;fetching(0);
+      const requestEpoch = ++getEpoch;clearFetching();fetching(0);
       button.disabled = true; button.textContent = 'Đang lấy…'; message('');
       let start = performance.now();
       try {

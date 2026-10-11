@@ -37,10 +37,9 @@
     .get-progress{margin:18px 0 4px;text-align:left} .get-progress-head{display:flex;justify-content:space-between;gap:12px;color:#b5c7d3;font-size:13px;line-height:1.5}
     .get-progress .track{margin-top:10px;height:7px} #get-progress-bar{height:100%;width:0;background:#83eed7;border-radius:8px;transition:width .25s ease;position:relative;overflow:hidden}
     #get-progress-bar::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#fff8,transparent);animation:get-shimmer 1.5s linear infinite}
-    #get-progress-track[aria-valuenow="0"] #get-progress-bar{width:30%!important;animation:get-pending 1.5s ease-in-out infinite}
-    @keyframes get-pending{from{transform:translateX(-110%)}to{transform:translateX(350%)}}
+    .get-progress-hint{margin:7px 0 0;font-size:11px;color:#7792a4}
     @keyframes get-shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
-    @media(prefers-reduced-motion:reduce){#get-progress-bar{transition:none}#get-progress-bar::after{animation:none}#get-progress-track[aria-valuenow="0"] #get-progress-bar{animation:none}}
+    @media(prefers-reduced-motion:reduce){#get-progress-bar{transition:none}#get-progress-bar::after{animation:none}}
     @media(max-width:440px){main{padding:32px 24px}body{padding:16px}}
   </style>
 </head>
@@ -71,8 +70,9 @@
     </section>
     <button id="get" type="button">Get master password</button>
     <section id="get-progress" class="get-progress" hidden aria-label="Tiến trình lấy mật khẩu">
-      <div class="get-progress-head"><span id="get-progress-label" role="status" aria-live="polite">Chuẩn bị yêu cầu…</span><span id="get-progress-step">0/4</span></div>
-      <div id="get-progress-track" class="track" role="progressbar" aria-label="Các bước lấy mật khẩu" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><div id="get-progress-bar"></div></div>
+      <div class="get-progress-head"><span id="get-progress-label" role="status" aria-live="polite">Chuẩn bị yêu cầu…</span><span id="get-progress-step">0%</span></div>
+      <div id="get-progress-track" class="track" role="progressbar" aria-label="Tiến độ ước tính" aria-valuemin="0" aria-valuemax="100" aria-describedby="get-progress-hint" aria-valuenow="0"><div id="get-progress-bar"></div></div>
+      <p id="get-progress-hint" class="get-progress-hint">Tiến độ ước tính</p>
     </section>
     <button id="copy" type="button" hidden>Copy lại master password</button>
     <textarea id="manual" rows="2" readonly hidden aria-label="Mật khẩu để copy thủ công" spellcheck="false" autocomplete="off"></textarea>

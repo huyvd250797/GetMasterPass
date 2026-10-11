@@ -10,7 +10,10 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false}
  const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only'}),w=dom.window;
  const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
- w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;w.setInterval=()=>1;w.clearInterval=()=>{};
+ w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;
+ let now=0,nextTimer=0;const intervals=new Map();
+ Object.defineProperty(w.performance,'now',{value:()=>now});
+ w.setInterval=(fn,ms)=>{const id=++nextTimer;intervals.set(id,{fn,ms,at:now});return id;};w.clearInterval=id=>intervals.delete(id);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async s=>copies.push(s)}});
  const response=(status,body)=>new Response(JSON.stringify({...body,version:APP_VERSION}),{status});
@@ -42,7 +45,7 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false}
  async function submit(id){$(id).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await flush();}
  async function login(username){$('login-username').value=username;$('login-password').value='TEST-ONLY-PASSWORD';await submit('login-form');}
  async function click(id){$(id).click();await flush();}
- return {dom,w,$,requests,copies,users,history,login,click,submit,resolve:()=>resolveMaster(),push:async item=>{streamController.enqueue(new TextEncoder().encode(JSON.stringify(item)+'\n'));await flush();},finish:async()=>{streamController.close();await flush();},chunk:async text=>{streamController.enqueue(new TextEncoder().encode(text));await flush();}};
+ return {dom,w,$,requests,copies,users,history,login,click,submit,advance:async ms=>{now+=ms;for(const item of [...intervals.values()])if(now-item.at>=item.ms){item.at=now;item.fn();}await flush();},resolve:()=>resolveMaster(),push:async item=>{streamController.enqueue(new TextEncoder().encode(JSON.stringify(item)+'\n'));await flush();},finish:async()=>{streamController.close();await flush();},chunk:async text=>{streamController.enqueue(new TextEncoder().encode(text));await flush();}};
 }
 test('UI login, admin create/lock/reset, history and logout clear private content',async()=>{
  const h=await setup();try{
@@ -114,16 +117,17 @@ test('admin confirms or cancels single-row and all-history deletion',async()=>{
   assert.equal(h.requests.find(r=>r.body?.action==='delete_all').body.confirm,'DELETE_ALL_GET_HISTORY');
  }finally{h.dom.window.close();}
 });
-test('streamed milestones advance only on server events, block duplicate Get and complete on the valid result',async()=>{
+test('estimated percent increases while waiting, server completion advances it, and only a valid result finishes',async()=>{
  const h=await setup({streamMaster:true});try{
-  await h.login('tester');await h.click('get');assert.equal(h.$('get-progress').hidden,false);assert.equal(h.$('get-progress-step').textContent,'0/4');assert.equal(h.$('get').disabled,true);
+  await h.login('tester');await h.click('get');assert.equal(h.$('get-progress').hidden,false);assert.equal(h.$('get-progress-step').textContent,'3%');assert.equal(h.$('get').disabled,true);
   const requests=h.requests.length;await h.click('get');assert.equal(h.requests.length,requests);
-  await h.push({type:'progress',step:2,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'2/4');assert.equal(h.$('get-progress-track').getAttribute('aria-valuenow'),'2');
-  assert.equal(h.$('get-progress-bar').style.width,'50%');assert.equal(h.copies.length,0);
-  await h.push({type:'progress',step:1,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'2/4');
-  await h.chunk('{"type":"progress","step":');assert.equal(h.$('get-progress-step').textContent,'2/4');
-  await h.chunk('3,"version":"'+APP_VERSION+'"}\n');assert.equal(h.$('get-progress-step').textContent,'3/4');assert.match(h.$('get-progress-label').textContent,/Đang hoàn tất/);
-  assert.equal(h.$('get-progress-bar').style.width,'75%');
+  await h.push({type:'progress',step:2,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'30%');assert.equal(h.$('get-progress-track').getAttribute('aria-valuenow'),'30');
+  assert.equal(h.$('get-progress-bar').style.width,'30%');assert.equal(h.copies.length,0);assert.match(h.$('get-progress-hint').textContent,/ước tính/);
+  await h.push({type:'progress',step:1,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'30%');
+  await h.chunk('{"type":"progress","step":');assert.equal(h.$('get-progress-step').textContent,'30%');
+  await h.advance(20000);const percent=Number.parseInt(h.$('get-progress-step').textContent);assert.ok(percent>30&&percent<90);assert.equal(h.copies.length,0);
+  await h.chunk('3,"version":"'+APP_VERSION+'"}\n');assert.equal(h.$('get-progress-step').textContent,'95%');assert.match(h.$('get-progress-label').textContent,/Đang hoàn tất/);
+  assert.equal(h.$('get-progress-bar').style.width,'95%');
   await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-STREAM-UI',remainingMs:90000,processingMs:0}});await h.finish();
   assert.deepEqual(h.copies,['TEST-STREAM-UI']);assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get').disabled,false);assert.match(h.$('toast').textContent,/Đã lấy và copy/);
  }finally{h.dom.window.close();}
@@ -138,4 +142,29 @@ test('failed or truncated progress never reaches completion; logout discards lat
    if(mode!=='logout')assert.ok(h.$('status').textContent.length>0);else assert.equal(h.w.MasterSession,null);
   }finally{h.dom.window.close();}
  }
+});
+test('long waits stay below 100%, do not regress, and success alone can show 100%',async()=>{
+ const h=await setup({streamMaster:true});let releaseCopy;
+ try{
+  await h.login('tester');await h.click('get');await h.push({type:'progress',step:2,version:APP_VERSION});
+  await h.advance(200000);const waiting=Number.parseInt(h.$('get-progress-step').textContent);assert.ok(waiting>=80&&waiting<=90);assert.equal(h.copies.length,0);
+  await h.push({type:'progress',step:2,version:APP_VERSION});assert.equal(Number.parseInt(h.$('get-progress-step').textContent),waiting);
+  await h.push({type:'progress',step:1,version:APP_VERSION});assert.equal(Number.parseInt(h.$('get-progress-step').textContent),waiting);
+  await h.push({type:'progress',step:3,version:APP_VERSION});await h.advance(200000);
+  assert.ok(Number.parseInt(h.$('get-progress-step').textContent)>=95);assert.ok(Number.parseInt(h.$('get-progress-step').textContent)<100);
+  const gate=new Promise(r=>releaseCopy=r),original=h.w.navigator.clipboard.writeText;
+  h.w.navigator.clipboard.writeText=async value=>{await gate;await original(value);};
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-PERCENT-READY',remainingMs:90000,processingMs:400000}});await h.finish();
+  assert.equal(h.$('get-progress-step').textContent,'100%');assert.equal(h.$('get-progress-track').getAttribute('aria-valuenow'),'100');assert.equal(h.$('get-progress-track').getAttribute('aria-valuemax'),'100');
+  assert.equal(h.$('get-progress').hidden,false);releaseCopy();await flush();assert.equal(h.$('get-progress').hidden,true);
+ }finally{releaseCopy?.();h.dom.window.close();}
+});
+test('failure clears the progress timer and a retry starts from a fresh percentage',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');await h.push({type:'progress',step:2,version:APP_VERSION});await h.advance(20000);
+  await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_TIMEOUT'}});await h.finish();
+  assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get-progress-step').textContent,'0%');await h.advance(1000);assert.equal(h.$('get-progress-step').textContent,'0%');
+  await h.click('get');assert.equal(h.$('get-progress-step').textContent,'3%');await h.click('logout');await h.advance(1000);
+  assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get-progress-step').textContent,'0%');await h.finish();
+ }finally{h.dom.window.close();}
 });
