@@ -1,8 +1,19 @@
-# Master Password — v2.4.2
+# Master Password — v2.5.0
 
-App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
+App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.3.x/2.4.x cần chạy `database/migrate-v2.5.0.sql` trên Neon trước khi deploy. Từ 2.2.0 cần chạy cả migrate-v2.3.0.sql rồi migrate-v2.5.0.sql; không tạo lại tài khoản.
 
-## Thay đổi 2.4.2
+## Thay đổi 2.5.0
+
+- Khi nhận master hợp lệ, hiển thị dòng màu cam ngay trên countdown: **“Mật khẩu master do Mr. HuyVo quản lý. Vui lòng sử dụng đúng mục đích và trong phạm vi được cấp quyền.”** Dòng nằm trong vùng mã còn hiệu lực, ẩn khi chưa có mã, lỗi, hết hạn hoặc đăng xuất. Đây là thông điệp hướng dẫn sử dụng; quyền truy cập vẫn do server kiểm tra.
+- Admin vào **Tài khoản → Thời hạn phiên người dùng**, nhập số giờ nguyên **1–168**, rồi Lưu thời hạn. Mặc định **8 giờ**, lưu dùng chung trên Neon và ghi audit SESSION_POLICY_UPDATE. API chặn user, yêu cầu phiên admin/CSRF/Origin/phiên bản và giới hạn tốc độ như các thao tác quản trị hiện có.
+- Thiết lập áp dụng chung cho **các lần đăng nhập user tiếp theo**. Mỗi phiên có expires_at tuyệt đối từ lúc login; thay đổi thiết lập giữ nguyên thời hạn phiên đang hoạt động, không hồi sinh phiên đã hết hạn. Admin vẫn 8 giờ. Get, Copy, đổi tab hoặc refresh xác thực không gia hạn phiên.
+- Cookie Max-Age được cấp theo thời hạn thực của phiên; không còn giới hạn cookie user cố định ở 8 giờ. Server kiểm tra expires_at trên mọi endpoint cần đăng nhập và kiểm tra lại trước khi trả master, kể cả phiên hết hạn trong lúc HRM đang đọc.
+- API login/kiểm tra phiên trả sessionExpiresAt và sessionRemainingMs; UI dùng đồng hồ thực/monotonic, đưa về login và xóa master trong bộ nhớ khi hết hạn. Tab bị tạm dừng được kiểm tra lại khi hiện/pageshow; Get/Copy kiểm tra deadline ngay trước thao tác. Phản hồi Get muộn không được hiển thị/copy. Kiểm tra phiên mỗi 30 giây hiện có được giữ, không thêm polling cho Get.
+- UI đo thời hạn theo remainingMs server và trừ độ trễ request một cách bảo thủ, có thể thoát sớm vài giây khi request/đồng hồ máy thay đổi. Backend là nguồn quyết định hết hạn; chỉnh đồng hồ hoặc vô hiệu hóa JavaScript không kéo dài quyền truy cập. Clipboard hệ điều hành không tự xóa sau logout.
+- **Cần migration migrate-v2.5.0.sql trước khi deploy** để thêm mp_app_settings; chạy lại an toàn, không reset thiết lập đã lưu, không xóa user/phiên/lịch sử. Không cần biến Vercel mới. Schema cài mới gồm bảng này. Giữ các tối ưu Get v2.4.2; đường cache hit vẫn 2 SQL, đọc mã mới không tranh chấp vẫn 4 SQL. Mục tiêu dưới 10 giây vẫn chưa được xác nhận production.
+- Kiểm thử SQL PostgreSQL/PGlite cho cấp phiên 1 giờ/168 giờ/admin 8 giờ, cookie, phân quyền, đầu vào, migration, hết hạn trước/trong Get; kiểm thử DOM cho cấu hình, tự thoát, tab ngủ, phản hồi muộn và thông điệp. Chưa chạy HRM production hoặc render bằng browser thật.
+
+## Thay đổi 2.4.2 (lịch sử)
 
 - Footer hiển thị in đậm **© 2026 HuyVo. All rights reserved · v2.4.2**. Phiên bản lấy từ package.json khi build; vẫn dùng X.Y.Z và tăng phiên bản/tên ZIP mỗi lần giao source.
 - Thời gian đang Get và thời gian Get hoàn tất chỉ hiển thị **X giây**. Giữ đo millisecond theo timestamp thực bên trong, hiển thị số giây đã trôi qua bằng Math.floor, ví dụ 1.999 ms là 1 giây, 2.000 ms là 2 giây. Lượt cache nhanh dưới 1 giây hiển thị 0 giây. Progress % không quyết định số giây.
@@ -84,7 +95,7 @@ Bản 2.3.0 **có lưu ciphertext của master trong bảng mp_master_cache**. A
 
 Kiểm tra cả thời gian DB, đồng hồ thực và monotonic trước khi tái sử dụng; bỏ cache khi còn ≤3 giây, không reset về 300 giây. Thay credential HRM hoặc SESSION_SECRET không dùng lại cache cũ. Dữ liệu hết hạn bị từ chối về mặt logic và được thay thế khi có mã mới; không cam kết xóa ciphertext/backup ngay tại thời điểm hết hạn. SESSION_SECRET cần giữ riêng với DB và ổn định giữa các instance cùng deployment.
 
-Schema: mp_users, mp_sessions, mp_limits, mp_get_gate, mp_audit, mp_master_cache. Neon HTTP driver, SQL tham số hóa. Mật khẩu user: scrypt với salt riêng, N=131072/r=8/p=1. Token phiên ngẫu nhiên, DB chỉ giữ SHA-256; cookie HTTPS HttpOnly/Secure/SameSite=Strict, tối đa 8 giờ. Origin/CSRF bảo vệ các POST. Khóa/đặt lại mật khẩu tăng auth_version. Thay admin credential hoặc SESSION_SECRET rồi redeploy thu hồi các phiên tương ứng.
+Schema: mp_users, mp_sessions, mp_limits, mp_get_gate, mp_audit, mp_master_cache, mp_app_settings. Neon HTTP driver, SQL tham số hóa. Mật khẩu user: scrypt với salt riêng, N=131072/r=8/p=1. Token phiên ngẫu nhiên, DB chỉ giữ SHA-256; cookie HTTPS HttpOnly/Secure/SameSite=Strict; user 1–168 giờ theo thiết lập khi login, admin 8 giờ. Origin/CSRF bảo vệ các POST. Khóa/đặt lại mật khẩu tăng auth_version. Thay admin credential hoặc SESSION_SECRET rồi redeploy thu hồi các phiên tương ứng.
 
 Lịch sử Get hiển thị giờ Việt Nam, lọc người/ngày, phân trang 50 dòng. Pending quá 65 giây hiển thị Gián đoạn. Thao tác xóa và audit xóa nằm trong cùng câu SQL. Người sở hữu DB vẫn có thể sửa dữ liệu; đây không phải nhật ký chống sửa tuyệt đối. App không ghi IP/fingerprint.
 
@@ -109,7 +120,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 111 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 126 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 

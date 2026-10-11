@@ -2,6 +2,8 @@
  const $=id=>document.getElementById(id);
  const version=$('app-version').textContent.trim().replace(/^v/,'');
  let authEpoch=0,offset=0,total=0,selectedTab='master',resetId='',historyLoad=0,usersLoad=0,deleteId='';
+ let sessionClockTimer,sessionLifetime=0,sessionStarted=0,sessionWallStarted=0,sessionElapsed=0;
+ let sessionExpiredLocally=false;
  const errors={UNAUTHENTICATED:'Vui lòng đăng nhập lại.',INVALID_CREDENTIALS:'Sai username, mật khẩu hoặc tài khoản đã bị khóa.',
   FORBIDDEN:'Tài khoản không có quyền thực hiện thao tác.',AUTH_NOT_CONFIGURED:'Chưa cấu hình đăng nhập. Liên hệ quản trị viên.',
   DATABASE_NOT_CONFIGURED:'Chưa cấu hình dữ liệu. Liên hệ quản trị viên.',DATABASE_NOT_READY:'Chưa khởi tạo dữ liệu. Liên hệ quản trị viên.',
@@ -10,6 +12,7 @@
   USERNAME_EXISTS:'Username đã tồn tại.',RESERVED_USERNAME:'Username này dành cho admin.',PASSWORD_POLICY:'Mật khẩu phải có từ 4 đến 256 ký tự.',
   INVALID_INPUT:'Thông tin chưa hợp lệ. Kiểm tra các trường và khoảng ngày.',USER_NOT_FOUND:'Tài khoản không tồn tại.',
   CURRENT_PASSWORD_INVALID:'Mật khẩu hiện tại chưa đúng.',PASSWORD_CONFIRM_MISMATCH:'Hai lần nhập mật khẩu mới chưa khớp.',
+  SESSION_HOURS_INVALID:'Thời hạn phiên phải là số giờ nguyên từ 1 đến 168.',
   HISTORY_NOT_DELETABLE:'Dòng lịch sử đang xử lý hoặc đã được xóa. Tải lại lịch sử.'};
  const show=(id,text,type='')=>{if(type==='success'){window.MasterNotify?.success(text);text='';}$(id).textContent=text;$(id).className='note '+type;};
  const configMessages={
@@ -29,33 +32,57 @@
   }
   return errors[e.message]||'Không hoàn tất được yêu cầu. Vui lòng thử lại.';
  }
- function requireLogin(){
+ function requireLogin({expired=false}={}){
+  sessionExpiredLocally=expired;
+  clearInterval(sessionClockTimer);sessionClockTimer=undefined;sessionLifetime=0;sessionElapsed=0;
   authEpoch++;historyLoad++;usersLoad++;window.MasterSession=null;window.clearMaster?.();$('workspace').hidden=true;$('login-panel').hidden=false;
   $('tab-users').hidden=true;$('actor-filter').hidden=true;document.querySelector('main').classList.remove('wide');
   $('tab-history').hidden=true;$('tab-password').hidden=true;$('password-form').reset();$('password-status').textContent='';
   $('history-delete-dialog').close();deleteId='';window.MasterNotify?.clear();
   $('create-form').reset();$('history-actor').replaceChildren();$('who').textContent='';
+  $('session-settings-form').reset();$('session-settings-status').textContent='';
   $('users-rows').replaceChildren();$('history-rows').replaceChildren();$('reset-dialog').close();$('reset-password').value='';resetId='';
  }
- window.MasterAccess={requireLogin,errorText};
+ window.MasterAccess={requireLogin,errorText,checkSession:()=>{checkSessionClock();return !!window.MasterSession;}};
+ function remainingSession(){
+  sessionElapsed=Math.max(sessionElapsed,0,performance.now()-sessionStarted,Date.now()-sessionWallStarted);
+  return sessionLifetime-sessionElapsed;
+ }
+ function checkSessionClock(){
+  if(!window.MasterSession||!sessionClockTimer||remainingSession()>0)return;
+  requireLogin({expired:true});show('login-status','Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+ }
+ function armSessionClock(remainingMs,sameSession){
+  if(!Number.isFinite(remainingMs)||remainingMs<=0){requireLogin({expired:true});show('login-status','Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');return false;}
+  const ms=sameSession&&sessionClockTimer?Math.min(remainingSession(),remainingMs):remainingMs;
+  clearInterval(sessionClockTimer);sessionLifetime=ms;sessionElapsed=0;sessionStarted=performance.now();sessionWallStarted=Date.now();
+  sessionClockTimer=setInterval(checkSessionClock,1000);checkSessionClock();return !!window.MasterSession;
+ }
  async function api(path,body){
   const options={method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(15000)};
   if(body){options.headers={'Content-Type':'application/json','X-Master-Request':'1','X-App-Version':version,'X-CSRF-Token':window.MasterSession?.csrfToken||''};options.body=JSON.stringify(body);}
   const requestSession=window.MasterSession;
+  const started=performance.now();
   const r=await fetch(path,options);const d=await r.json();
   if(d.version!==version)throw new Error('VERSION_MISMATCH');
   if(!r.ok){if(r.status===401&&body?.action!=='login'&&window.MasterSession===requestSession)requireLogin();throw Object.assign(new Error(d.error||'FAILED'),{diagnostic:d});}
+  // Bound transport time conservatively; the backend's DB expiry is authoritative.
+  if(path==='/api/auth'&&Number.isFinite(d.sessionRemainingMs))d.sessionRemainingMs=Math.max(0,d.sessionRemainingMs-(performance.now()-started));
   return d;
  }
  function enter(d){
+  sessionExpiredLocally=false;
+  const sameSession=window.MasterSession?.csrfToken===d.csrfToken;
   if(window.MasterSession?.csrfToken!==d.csrfToken){authEpoch++;window.clearMaster?.();}
   if(window.MasterSession?.csrfToken!==d.csrfToken)window.MasterSession={user:d.user,csrfToken:d.csrfToken};
+  if(!armSessionClock(d.sessionRemainingMs,sameSession))return;
   $('login-panel').hidden=true;$('workspace').hidden=false;$('login-password').value='';
   $('who').textContent=`${d.user.fullName} · ${d.user.username}${d.user.role==='admin'?' · Admin':''}`;
   $('tab-users').hidden=d.user.role!=='admin';$('actor-filter').hidden=d.user.role!=='admin';
   $('tab-history').hidden=d.user.role!=='admin';$('tab-password').hidden=d.user.role!=='user';
  }
  async function refresh(){
+  if(sessionExpiredLocally)return;
   const epoch=authEpoch;try{const d=await api('/api/auth');if(epoch!==authEpoch)return;enter(d);}
   catch(e){if(epoch!==authEpoch)return;if(e.message==='UNAUTHENTICATED')requireLogin();else show(window.MasterSession?'app-status':'login-status',errorText(e),'error');}
  }
@@ -68,6 +95,7 @@
  async function loadUsers(){
   const sequence=++usersLoad,session=window.MasterSession;const d=await api('/api/admin');
   if(sequence!==usersLoad||window.MasterSession!==session)return;
+  $('user-session-hours').value=String(d.settings.userSessionHours);
   $('users-rows').replaceChildren();const filter=$('history-actor'),previous=filter.value;
   filter.replaceChildren();for(const [value,label] of [['','Tất cả'],['admin','Quản trị viên'],...d.users.map(u=>[u.id,`${u.full_name} (${u.username})`])]){
    const opt=document.createElement('option');opt.value=value;opt.textContent=label;filter.append(opt);
@@ -118,6 +146,15 @@
   finally{$('login-password').value='';}
  },'login-status');});
  $('logout').addEventListener('click',()=>busy($('logout'),async()=>{await api('/api/auth',{action:'logout'});requireLogin();show('login-status','Đã đăng xuất.');}));
+ $('session-settings-form').addEventListener('submit',e=>{e.preventDefault();busy($('session-settings-save'),async()=>{
+  if(window.MasterSession?.user.role!=='admin')return;
+  const raw=$('user-session-hours').value;
+  if(!/^\d{1,3}$/.test(raw)||Number(raw)<1||Number(raw)>168)throw new Error('SESSION_HOURS_INVALID');
+  const session=window.MasterSession;
+  const d=await api('/api/admin',{action:'set_session_hours',hours:Number(raw)});if(window.MasterSession!==session)return;
+  $('user-session-hours').value=String(d.settings.userSessionHours);
+  show('session-settings-status',`Đã lưu thời hạn phiên user: ${d.settings.userSessionHours} giờ. Áp dụng từ lần đăng nhập tiếp theo.`,'success');
+ },'session-settings-status');});
  $('create-form').addEventListener('submit',e=>{e.preventDefault();busy($('create-submit'),async()=>{
   try{await api('/api/admin',{action:'create',fullName:$('create-name').value,username:$('create-username').value,password:$('create-password').value});
    $('create-form').reset();show('app-status','Đã tạo tài khoản. Gửi thông tin đăng nhập riêng cho người dùng.','success');await loadUsers();}
@@ -153,8 +190,8 @@
   const d=await api('/api/history',body);if(window.MasterSession!==session)return;
   $('history-delete-dialog').close();deleteId='';offset=0;window.MasterNotify?.success(`Đã xóa ${d.deleted} dòng lịch sử.`);await loadHistory();
  },'history-delete-status');});
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
- window.addEventListener('pageshow',refresh);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkSessionClock();refresh();}});
+ window.addEventListener('pageshow',()=>{checkSessionClock();refresh();});
  setInterval(()=>{if(window.MasterSession&&!document.hidden)refresh();},30000);
  requireLogin();refresh();
 })();

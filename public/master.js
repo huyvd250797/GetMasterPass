@@ -105,6 +105,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       if (masterState) {masterState.textContent = ms<30000?'Sắp hết hiệu lực':'Mã đang hiệu lực';masterState.dataset.state = ms<30000?'expiring':'active';}
     }
     async function copy(retrieved=false) {
+      if(window.MasterAccess?.checkSession&&!window.MasterAccess.checkSession())return expire();
       if (!window.MasterSession?.user) return expire();
       if (!secret || remaining() < 1000) return expire();
       const epoch = masterEpoch, session = window.MasterSession, value = secret;
@@ -129,6 +130,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       try {await copy();} finally {copyButton.disabled = false;}
     });
     button.addEventListener('click', async () => {
+      if(window.MasterAccess?.checkSession&&!window.MasterAccess.checkSession())return;
       const session = window.MasterSession;
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
@@ -146,6 +148,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         let result;
         try { result = await readResult(response, step => {if (window.MasterSession === session && getEpoch === requestEpoch) fetching(step);}); } catch (error) {if (error.message === 'VERSION_MISMATCH') throw error;throw new Error('API_INVALID_RESPONSE');}
         const {data} = result;
+        if(window.MasterAccess?.checkSession&&!window.MasterAccess.checkSession())return;
         if (window.MasterSession !== session || getEpoch !== requestEpoch) return;
         if (result.status === 401) {window.MasterAccess?.requireLogin(); throw new Error('UNAUTHENTICATED');}
         if (data.version !== APP_VERSION) throw new Error('VERSION_MISMATCH');

@@ -6,9 +6,9 @@ import {APP_VERSION} from './lib/app-version.mjs';
 const html=(await readFile(new URL('./public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',APP_VERSION);
 const scripts=await Promise.all(['notifications.js','master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
 async function flush(){for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));}
-async function setup({deferredMaster=false,configIssues=null,streamMaster=false}={}){
- const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only'}),w=dom.window;
- const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController;
+async function setup({deferredMaster=false,configIssues=null,streamMaster=false,sessionMs=28800000}={}){
+ const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController,sessionEnd=0,userSessionHours=8;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
  w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;
  let now=0,wallNow=1700000000000,nextTimer=0;const intervals=new Map();
@@ -23,15 +23,16 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false}
   if(path==='/api/version')return response(200,{});
   if(path==='/api/auth'){
    if(configIssues)return response(503,{error:'AUTH_NOT_CONFIGURED',configIssues,privateValue:'PRIVATE-SERVER-VALUE'});
-   if(body?.action==='login'){current=body.username==='admin'?admin:user;return response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id});}
+   if(body?.action==='login'){current=body.username==='admin'?admin:user;sessionEnd=wallNow+sessionMs;return response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id,sessionRemainingMs:sessionMs,sessionExpiresAt:new Date(sessionEnd).toISOString()});}
    if(body?.action==='change_password'){assert.equal(current.role,'user');current=null;return response(200,{ok:true,loginRequired:true});}
    if(body?.action==='logout'){assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);current=null;return response(200,{ok:true});}
-   return current?response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id}):response(401,{error:'UNAUTHENTICATED'});
+   return current&&wallNow<sessionEnd?response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id,sessionRemainingMs:sessionEnd-wallNow,sessionExpiresAt:new Date(sessionEnd).toISOString()}):response(401,{error:'UNAUTHENTICATED'});
   }
   if(path==='/api/admin'){
+   if(body?.action==='set_session_hours'){assert.equal(current?.role,'admin');userSessionHours=body.hours;return response(200,{ok:true,settings:{userSessionHours}});}
    assert.equal(current?.role,'admin');if(body?.action==='create')users.push({id:'test-id',username:body.username,full_name:body.fullName,active:true,get_count:0});
    if(body?.action==='toggle')users[0].active=body.active;
-   return response(200,body?{ok:true}:{users});
+   return response(200,body?{ok:true}:{users,settings:{userSessionHours}});
   }
   if(path.startsWith('/api/history')){if(body){assert.equal(current.role,'admin');const count=body.action==='delete_all'?history.length:1;history.splice(0,body.action==='delete_all'?history.length:1);return response(200,{ok:true,deleted:count});}return response(200,{items:history,stats:{total:history.length,issued:history.length,failed:0},offset:0,pageSize:50});}
   if(path==='/api/master-password'){
@@ -69,6 +70,63 @@ test('a master response finishing after logout is never copied or shown',async()
  const h=await setup({deferredMaster:true});try{
   await h.login('tester');await h.click('get');await h.click('logout');h.resolve();await flush();
   assert.equal(h.copies.length,0);assert.equal(h.$('manual').value,'');assert.equal(h.$('workspace').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('admin saves a common session duration and users cannot invoke the settings form',async()=>{
+ const h=await setup();try{
+  await h.login('admin');await h.click('tab-users');assert.equal(h.$('user-session-hours').value,'8');
+  h.$('user-session-hours').value='12';await h.submit('session-settings-form');
+  assert.ok(h.requests.some(r=>r.path==='/api/admin'&&r.body?.action==='set_session_hours'&&r.body.hours===12));
+  assert.match(h.$('toast').textContent,/12 giờ/);
+  await h.click('tab-master');await h.click('tab-users');assert.equal(h.$('user-session-hours').value,'12');
+  const before=h.requests.length;h.$('user-session-hours').value='2.5';await h.submit('session-settings-form');
+  assert.equal(h.requests.length,before);assert.match(h.$('session-settings-status').textContent,/1 đến 168/);
+  await h.click('logout');await h.login('tester');await h.click('tab-users');assert.equal(h.$('users-panel').hidden,true);
+  const userBefore=h.requests.length;h.$('user-session-hours').value='1';await h.submit('session-settings-form');assert.equal(h.requests.length,userBefore);
+ }finally{h.dom.window.close();}
+});
+test('session refresh and Get/Copy never extend the absolute hour; expiry removes a still-valid master',async()=>{
+ const h=await setup({sessionMs:3600000});try{
+  await h.login('tester');await h.advance(3590000);assert.equal(h.$('workspace').hidden,false);
+  await h.click('get');assert.equal(h.$('active').hidden,false);assert.deepEqual(h.copies,['TEST-MASTER']);
+  await h.click('copy');assert.equal(h.copies.length,2);
+  await h.advance(9999);assert.equal(h.$('workspace').hidden,false);
+  await h.advance(1,{runTimers:false});h.w.dispatchEvent(new h.w.Event('pageshow'));await flush();
+  assert.equal(h.$('workspace').hidden,true);assert.equal(h.$('login-panel').hidden,false);assert.equal(h.w.MasterSession,null);
+  assert.equal(h.$('active').hidden,true);assert.equal(h.$('manual').value,'');assert.equal(h.$('get-duration').hidden,true);
+  assert.match(h.$('login-status').textContent,/hết hạn/);await h.click('copy');assert.equal(h.copies.length,2);
+ }finally{h.dom.window.close();}
+});
+test('a pending Get completing after automatic session expiry is neither displayed nor copied',async()=>{
+ const h=await setup({deferredMaster:true,sessionMs:1000});try{
+  await h.login('tester');await h.click('get');await h.advance(1000);assert.equal(h.w.MasterSession,null);
+  h.resolve();await flush();assert.equal(h.copies.length,0);assert.equal(h.$('active').hidden,true);
+  assert.equal(h.$('manual').value,'');assert.equal(h.$('workspace').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('suspended tab uses real elapsed wall time to force login when it becomes visible',async()=>{
+ const h=await setup({sessionMs:3600000});try{
+  await h.login('tester');await h.click('get');
+  await h.advance(3600000,{runTimers:false,wallOnly:true});h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));await flush();
+  assert.equal(h.w.MasterSession,null);assert.equal(h.$('workspace').hidden,true);assert.equal(h.$('active').hidden,true);
+  assert.match(h.$('login-status').textContent,/hết hạn/);
+ }finally{h.dom.window.close();}
+});
+test('Copy checks session expiry itself when background timer callbacks have not resumed',async()=>{
+ const h=await setup({sessionMs:1000});try{
+  await h.login('tester');await h.click('get');assert.equal(h.copies.length,1);
+  await h.advance(1000,{runTimers:false});await h.click('copy');
+  assert.equal(h.copies.length,1);assert.equal(h.w.MasterSession,null);assert.equal(h.$('active').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('master usage notice is above the countdown and appears only after a valid Get result',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');assert.equal(h.$('active').hidden,true);await h.click('get');
+  await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_TIMEOUT'}});await h.finish();assert.equal(h.$('active').hidden,true);
+  await h.click('get');await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-MASTER',remainingMs:90000,processingMs:0}});await h.finish();
+  assert.equal(h.$('active').hidden,false);assert.match(h.$('master-usage').textContent,/Mr\. HuyVo quản lý/);
+  assert.ok(h.$('master-usage').compareDocumentPosition(h.$('seconds'))&h.w.Node.DOCUMENT_POSITION_FOLLOWING);
+  await h.advance(90000);assert.equal(h.$('active').hidden,true);
  }finally{h.dom.window.close();}
 });
 test('Get elapsed time follows the whole request across stages; duration remains after copy and clears at logout',async()=>{

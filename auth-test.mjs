@@ -82,7 +82,7 @@ test('valid configuration boundaries proceed to login without changing passwords
  for(const [username,password] of [[' Admin ', 'x'.repeat(8)],['a'.repeat(64),'x'.repeat(256)]]){
   const env={...testEnv,ADMIN_USERNAME:username,ADMIN_PASSWORD:password,SESSION_SECRET:'k'.repeat(32)};
   checkConfig(env);let saved;
-  const store={rate:async()=>true,loginSession:async(s,a)=>{saved={s,a};}};
+  const store={rate:async()=>true,loginSession:async(s,a)=>{saved={s,a};return {expiresAt:new Date(Date.now()+28800000).toISOString(),remainingMs:28800000};}};
   const response=await handleAuthRequest(request('/api/auth',{action:'login',username:username.trim(),password}),{env,store});
   assert.equal(response.status,200);assert.equal(saved.a.role,'admin');assert.equal(saved.a.username,username.trim().toLowerCase());
   assert.match(response.headers.get('set-cookie'),/HttpOnly; SameSite=Strict/);
