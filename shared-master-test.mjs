@@ -49,3 +49,34 @@ test('failed HRM read releases its lease; disabling shared cache uses the origin
   await reader({...testEnv,HRM_SHARED_CACHE_ENABLED:'0'});assert.equal(calls,3);
  }finally{reader.clear();}
 });
+test('cold runtime preparation overlaps the atomic lease query, while HRM waits for both',async()=>{
+ let prepared,claimed,resolveSetup,resolveLease,reads=0,publishes=0;
+ const setupStarted=new Promise(r=>prepared=r),leaseStarted=new Promise(r=>claimed=r);
+ const setup=new Promise(r=>resolveSetup=r),lease=new Promise(r=>resolveLease=r);
+ const runtime={marker:'TEST-RUNTIME'};
+ const store={cacheAcquireWithSnapshot:async()=>{claimed();return lease;},cachePublish:async()=>{publishes++;return true;},cacheRelease:async()=>{},cacheRead:async()=>{throw Error('Redundant SQL');}};
+ const fast=createSharedMasterReader({prepare:async()=>{prepared();return setup;},reader:async(env,options)=>{reads++;assert.equal(options.runtime,runtime);return {password:'TEST-COLD',remainingMs:90000};}});
+ try{
+  const result=fast(testEnv,{store});await Promise.all([setupStarted,leaseStarted]);assert.equal(reads,0);
+  resolveSetup(runtime);await Promise.resolve();assert.equal(reads,0);resolveLease({acquired:true});
+  assert.equal((await result).password,'TEST-COLD');assert.equal(reads,1);assert.equal(publishes,1);
+ }finally{fast.clear();}
+});
+test('cache published before claim skips HRM despite failed speculative runtime preparation',async()=>{
+ let reads=0,releases=0;
+ const sealed=sealMaster(testEnv,{password:'TEST-CACHE-WON',remainingMs:90000});
+ const snapshot={acquired:true,payload:sealed.payload,expires_at:sealed.expiresAt,remaining_ms:90000,read_at_ms:performance.now()};
+ const fast=createSharedMasterReader({prepare:async()=>{throw Error('TEST-UNAVAILABLE');},reader:async()=>{reads++;}});
+ try{
+  const result=await fast(testEnv,{store:{cacheAcquireWithSnapshot:async()=>snapshot,cacheRelease:async()=>{releases++;},cacheRead:async()=>{throw Error('Redundant SQL');}}});
+  assert.equal(result.password,'TEST-CACHE-WON');assert.equal(reads,0);assert.equal(releases,1);
+ }finally{fast.clear();}
+});
+test('failed preparation releases the owned lease and never navigates HRM',async()=>{
+ let reads=0,releases=0;
+ const fast=createSharedMasterReader({prepare:async()=>{throw Error('TEST-UNAVAILABLE');},reader:async()=>{reads++;}});
+ try{
+  await assert.rejects(fast(testEnv,{store:{cacheAcquireWithSnapshot:async()=>({acquired:true}),cacheRelease:async()=>{releases++;}}}),/TEST-UNAVAILABLE/);
+  assert.equal(reads,0);assert.equal(releases,1);
+ }finally{fast.clear();}
+});

@@ -70,6 +70,27 @@ test('a master response finishing after logout is never copied or shown',async()
   assert.equal(h.copies.length,0);assert.equal(h.$('manual').value,'');assert.equal(h.$('workspace').hidden,true);
  }finally{h.dom.window.close();}
 });
+test('Get elapsed time follows the whole request across stages; duration remains after copy and clears at logout',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');assert.equal(h.$('get-elapsed').textContent,'0,0 giây');assert.equal(h.$('get-duration').hidden,true);
+  await h.advance(1250);assert.equal(h.$('get-elapsed').textContent,'1,3 giây');
+  await h.push({type:'progress',step:2,version:APP_VERSION});await h.advance(2500);assert.equal(h.$('get-elapsed').textContent,'3,8 giây');
+  await h.push({type:'progress',step:3,version:APP_VERSION});await h.advance(500);assert.equal(h.$('get-elapsed').textContent,'4,3 giây');
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-MASTER',remainingMs:90000,processingMs:4250}});await h.finish();
+  assert.equal(h.$('get-duration').hidden,false);assert.equal(h.$('get-duration-value').textContent,'4,3 giây');assert.equal(h.$('get-progress').hidden,true);
+  const count=h.requests.length;await h.advance(2000);await h.click('copy');assert.equal(h.requests.length,count);assert.equal(h.$('get-duration-value').textContent,'4,3 giây');
+  await h.click('logout');assert.equal(h.$('get-duration').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('failed Get reports its elapsed duration and the next attempt starts at zero',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');await h.advance(11250);
+  await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_TIMEOUT'}});await h.finish();
+  assert.equal(h.$('get-duration-value').textContent,'11,3 giây');assert.match(h.$('get-duration-label').textContent,/chưa thành công/);assert.equal(h.$('master-state').dataset.state,'error');
+  await h.click('get');assert.equal(h.$('get-duration').hidden,true);assert.equal(h.$('get-elapsed').textContent,'0,0 giây');
+  await h.click('logout');await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-LATE',remainingMs:90000,processingMs:0}});await h.finish();assert.equal(h.$('get-duration').hidden,true);assert.equal(h.copies.length,0);
+ }finally{h.dom.window.close();}
+});
 test('configuration diagnostics appear on page load and failed login using only known labels',async()=>{
  const h=await setup({configIssues:['ADMIN_PASSWORD_TOO_SHORT','SESSION_SECRET_MISSING','<img src=x onerror=alert(1)>','PRIVATE-SERVER-VALUE']});
  try{

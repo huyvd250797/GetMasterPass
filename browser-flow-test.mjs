@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectMaster,readMasterFromHrm,optimizeHrmPage} from './lib/hrm-browser.mjs';
+import {collectMaster,readMasterFromHrm,optimizeHrmPage,prepareHrmRuntime} from './lib/hrm-browser.mjs';
 
 function makePage({blocked=false,loginFails=false,popupState="absent",masterVisible=false,hoverOpens=true}={}) {
   let evaluations=0;const actions=[],waits=[];
@@ -74,6 +74,18 @@ test('browser closes if permission setup fails',async()=>{
   await assert.rejects(readMasterFromHrm({LOCAL_CHROME_PATH:'/test'},
     {loadPuppeteer:async()=>({default:{launch:async()=>browser}})}),e=>e.code==='BROWSER_SETUP_FAILED'&&e.stage==='browser_permissions');
   assert.equal(closed,true);
+});
+test('cold dependencies import concurrently and a prepared runtime is reused without another import',async()=>{
+ let puppeteerStarted,chromiumStarted,resolvePuppeteer,resolveChromium;
+ const pStarted=new Promise(r=>puppeteerStarted=r),cStarted=new Promise(r=>chromiumStarted=r);
+ const p=new Promise(r=>resolvePuppeteer=r),c=new Promise(r=>resolveChromium=r);
+ const {page}=makePage();const browser={defaultBrowserContext:()=>({overridePermissions:async()=>{}}),newPage:async()=>page,close:async()=>{}};
+ const preparing=prepareHrmRuntime({VERCEL:'1'},{platform:'linux',loadPuppeteer:async()=>{puppeteerStarted();return p;},loadChromium:async()=>{chromiumStarted();return c;}});
+ await Promise.all([pStarted,cStarted]);
+ resolvePuppeteer({default:{launch:async()=>browser}});resolveChromium({default:{args:[],executablePath:async()=>'/TEST-BINARY'}});
+ const runtime=await preparing;
+ const result=await readMasterFromHrm({LOCAL_CHROME_PATH:'/TEST-BINARY'},{runtime,loadPuppeteer:()=>{throw Error('Duplicate import');}});
+ assert.equal(result.password,'TEST-ONLY');
 });
 
 test('an absent or hidden expired-password notice is skipped without waiting',async()=>{

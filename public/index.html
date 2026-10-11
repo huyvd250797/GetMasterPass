@@ -5,48 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Master Password</title>
   <meta name="description" content="Lấy mật khẩu master, copy và theo dõi thời gian hiệu lực.">
-  <style>
-    :root {color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#ecf4fa;background:#091119}
-    * {box-sizing:border-box} body {margin:0;min-height:100svh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 15%,#123440 0,transparent 60%),#091119}
-    main {width:min(100%,430px);padding:40px 32px 28px;border:1px solid #263a46;border-radius:24px;background:#101c26;box-shadow:0 24px 80px #0004;text-align:center}
-    .icon {display:grid;place-items:center;width:60px;height:60px;margin:0 auto 24px;border:1px solid #35716f;border-radius:18px;background:#173c3d;color:#7aefdb}
-    h1 {font-size:26px;letter-spacing:-.7px;margin:0 0 10px;font-weight:650} .sub {font-size:14px;line-height:1.6;color:#9ab0bf;margin:0 0 30px}
-    button {width:100%;min-height:52px;border:0;border-radius:12px;background:#83eed7;color:#09221e;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s,transform .15s}
-    button:hover {background:#a0f6e5} button:active {transform:translateY(1px)} button:disabled {opacity:.65;cursor:wait} button:focus-visible {outline:3px solid #ecf4fa;outline-offset:4px}
-    [hidden] {display:none!important} #active {padding:8px 0 6px} #seconds {font-size:64px;line-height:1;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-3px;margin:0 0 12px}
-    .timer-label {margin:0;font-size:14px;color:#a7bcc9} .track {height:5px;overflow:hidden;background:#22333f;border-radius:8px;margin-top:24px} #progress {height:100%;width:100%;background:#83eed7;transition:width .2s linear}
-    #status {font-size:13px;line-height:1.65;min-height:22px;margin:20px 0 0;color:#9ab0bf} #status.error {color:#ffb1ad} #status.success {color:#83eed7}
-    textarea {width:100%;margin-top:18px;padding:12px;background:#091119;color:#ecf4fa;border:1px solid #536b7a;border-radius:10px;font-family:monospace;resize:none}
-    footer {margin-top:28px;padding-top:20px;border-top:1px solid #263440;color:#7792a4;font-size:11px;letter-spacing:.1px}
-    main.wide {width:min(100%,1040px)}
-    label {display:block;text-align:left;font-size:13px;color:#b5c7d3;margin:14px 0 6px}
-    input,select {width:100%;padding:13px;border:1px solid #3c5261;border-radius:10px;background:#0b151e;color:#ecf4fa;font:inherit;min-width:0}
-    form button {margin-top:20px} .toolbar {display:flex;gap:10px;align-items:center;justify-content:space-between;margin:18px 0;flex-wrap:wrap}
-    .toolbar button,.tabs button,.row-actions button {width:auto;min-height:38px;padding:8px 14px;font-size:13px}
-    button.secondary {background:#263b49;color:#e2edf4} .tabs {display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 26px}
-    .tabs button[aria-pressed="true"] {background:#83eed7;color:#09221e}
-    .note {color:#9ab0bf;font-size:13px;line-height:1.6} .error {color:#ffb1ad} .success {color:#83eed7}
-    .grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;text-align:left}
-    .stats {display:flex;gap:12px;flex-wrap:wrap;margin:20px 0} .stat {flex:1;min-width:120px;padding:16px;border:1px solid #314855;border-radius:12px;text-align:left}
-    .stat strong {display:block;font-size:26px;margin-top:6px} .table-wrap {overflow-x:auto;text-align:left}
-    table {width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap} th,td {padding:12px;border-bottom:1px solid #2b404d;text-align:left} th {color:#91adbf;font-weight:500}
-    .row-actions {display:flex;gap:8px} dialog {background:#101c26;color:#ecf4fa;border:1px solid #425c6c;border-radius:18px;width:min(90vw,420px);padding:28px} dialog::backdrop{background:#000a}
-    .empty {padding:24px;text-align:center;color:#9ab0bf} h2 {font-size:20px;text-align:left;margin:0 0 16px}
-    #status:empty,.note:empty{display:none} .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1000;width:max-content;max-width:calc(100vw - 32px);padding:15px 22px;border:1px solid #3d8b7d;border-radius:14px;background:#143b32;color:#c8fff0;box-shadow:0 12px 40px #0006;font-size:14px;line-height:1.5;text-align:center}
-    .toast.error{background:#492523;border-color:#aa655f;color:#ffd5d0} button.danger{background:#5b2d30;color:#ffd5d0}
-    .get-progress{margin:18px 0 4px;text-align:left} .get-progress-head{display:flex;justify-content:space-between;gap:12px;color:#b5c7d3;font-size:13px;line-height:1.5}
-    .get-progress .track{margin-top:10px;height:7px} #get-progress-bar{height:100%;width:0;background:#83eed7;border-radius:8px;transition:width .25s ease;position:relative;overflow:hidden}
-    #get-progress-bar::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#fff8,transparent);animation:get-shimmer 1.5s linear infinite}
-    .get-progress-hint{margin:7px 0 0;font-size:11px;color:#7792a4}
-    @keyframes get-shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
-    @media(prefers-reduced-motion:reduce){#get-progress-bar{transition:none}#get-progress-bar::after{animation:none}}
-    @media(max-width:440px){main{padding:32px 24px}body{padding:16px}}
-  </style>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main>
+    <div class="brand-label">ASC <span>WORKSPACE</span></div>
     <div class="icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.5"/><path d="m11.2 11.2 9 9M16 16l2.5-2.5M18.5 18.5 21 16"/></svg></div>
     <h1>Master Password</h1>
+    <p class="header-caption">Truy cập có kiểm soát. Thao tác gọn gàng.</p>
     <section id="login-panel">
       <form id="login-form">
         <label for="login-username">Tên đăng nhập</label><input id="login-username" name="username" autocomplete="username" required maxlength="64">
@@ -63,20 +29,27 @@
         <button id="tab-users" type="button" class="secondary" aria-pressed="false" hidden>Tài khoản</button>
         <button id="tab-password" type="button" class="secondary" aria-pressed="false" hidden>Đổi mật khẩu</button>
       </nav>
-      <section id="master-panel">
+      <section id="master-panel" aria-label="Lấy mật khẩu master">
+        <div class="master-heading"><div><p class="eyebrow">MASTER ACCESS</p><h2>Lấy mật khẩu master</h2></div><span id="master-state" class="state-pill" data-state="ready">Sẵn sàng</span></div>
+        <div class="master-content">
+        <p class="master-caption">Mã còn hiệu lực có thể copy lại ngay tại đây.</p>
     <section id="active" hidden aria-label="Thời gian còn hiệu lực">
       <p id="seconds">0</p><p class="timer-label">giây còn hiệu lực</p>
+      <p class="active-note">Dùng mã trước khi thời gian kết thúc.</p>
       <div class="track" aria-hidden="true"><div id="progress"></div></div>
     </section>
     <button id="get" type="button">Get master password</button>
     <section id="get-progress" class="get-progress" hidden aria-label="Tiến trình lấy mật khẩu">
       <div class="get-progress-head"><span id="get-progress-label" role="status" aria-live="polite">Chuẩn bị yêu cầu…</span><span id="get-progress-step">0%</span></div>
       <div id="get-progress-track" class="track" role="progressbar" aria-label="Tiến độ ước tính" aria-valuemin="0" aria-valuemax="100" aria-describedby="get-progress-hint" aria-valuenow="0"><div id="get-progress-bar"></div></div>
-      <p id="get-progress-hint" class="get-progress-hint">Tiến độ ước tính</p>
+      <div class="get-progress-meta"><p id="get-progress-hint" class="get-progress-hint">Tiến độ ước tính</p><p class="get-clock">Đã chờ <strong id="get-elapsed">0,0 giây</strong></p></div>
     </section>
     <button id="copy" type="button" hidden>Copy lại master password</button>
     <textarea id="manual" rows="2" readonly hidden aria-label="Mật khẩu để copy thủ công" spellcheck="false" autocomplete="off"></textarea>
     <p id="status" role="status" aria-live="polite"></p>
+    <div id="get-duration" class="duration-card" role="status" aria-live="polite" hidden><span id="get-duration-label">Lần Get vừa hoàn tất</span><strong id="get-duration-value">0,0 giây</strong></div>
+        </div>
+        <div class="master-footnote"><span class="small-dot"></span>Phiên đăng nhập được kiểm tra cho mỗi lần Get</div>
       </section>
       <section id="history-panel" hidden>
         <h2>Lịch sử lấy master</h2>

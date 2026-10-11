@@ -16,13 +16,14 @@ const html=(await readFile(new URL('../public/index.html',import.meta.url),'utf8
 const masterJs=await readFile(new URL('../public/master.js',import.meta.url),'utf8');
 const notifyJs=await readFile(new URL('../public/notifications.js',import.meta.url),'utf8');
 const authJs=await readFile(new URL('../public/app-auth.js',import.meta.url),'utf8');
+const styles=await readFile(new URL('../public/styles.css',import.meta.url),'utf8');
 http.createServer(async(req,res)=>{
  try{
   if(req.headers.host!==host){res.writeHead(403);res.end();return;}
   const path=new URL(req.url,`http://${host}`).pathname;
-  if(req.method==='GET'&&['/','/app-auth.js','/master.js','/notifications.js'].includes(path)){
-   res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY'});
-   res.end(path==='/'?html:path==='/master.js'?masterJs:path==='/notifications.js'?notifyJs:authJs);return;
+  if(req.method==='GET'&&['/','/app-auth.js','/master.js','/notifications.js','/styles.css'].includes(path)){
+   res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':path==='/styles.css'?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY'});
+   res.end(path==='/'?html:path==='/master.js'?masterJs:path==='/notifications.js'?notifyJs:path==='/styles.css'?styles:authJs);return;
   }
   const handlers={'/api/version':handleVersionRequest,'/api/auth':handleAuthRequest,'/api/admin':handleAdminRequest,'/api/history':handleHistoryRequest,'/api/master-password':handleMasterDelivery};
   if(!handlers[path]){res.writeHead(404);res.end();return;}

@@ -1,8 +1,19 @@
-# Master Password — v2.3.3
+# Master Password — v2.4.0
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
 
-## Thay đổi 2.3.3
+## Thay đổi 2.4.0
+
+- Khi thiếu cache hoặc mã hết hiệu lực, import Puppeteer/Chromium song song; chuẩn bị binary Chromium đồng thời với câu SQL nhận lease/cache. Chỉ mở browser, đăng nhập và đọc HRM sau khi nhận lease. Không thêm request Get từ UI hoặc tự gọi HRM trước khi user bấm Get.
+- Gộp nhận lease và lấy snapshot cache vào một câu SQL. Lượt đọc HRM mới không tranh chấp dùng **4 lượt SQL** thay vì 5 (admission → lease/snapshot → publish cache → kiểm tra quyền/issued). Cache hit giữ **2 lượt SQL**. Những lần chờ instance khác có thể cần thêm truy vấn; không coi 4 là số cố định cho mọi tình huống.
+- Giữ tái sử dụng browser/phiên HRM, cache mã hóa và gộp yêu cầu đồng thời của 2.3.3. Nếu instance mới hoàn toàn vẫn có bước khởi động Chromium; không có cắt timeout xuống 10 giây để tạo cảm giác nhanh.
+- UI được thiết kế lại với vùng thao tác master riêng, trạng thái Sẵn sàng/Đang xử lý/Mã đang hiệu lực/Sắp hết hiệu lực, form và bảng quản trị rõ hơn, responsive, focus bàn phím và giảm chuyển động.
+- Khi Get chạy, hiển thị **Đã chờ X,X giây** cạnh progress %. Khi nhận mã hợp lệ, hiển thị **Lần Get vừa hoàn tất — X,X giây**. Thời gian đo từ click tới nhận/kiểm tra kết quả, gồm mạng và backend; không bao gồm thời gian người dùng cấp quyền clipboard. Copy lại không đổi số đo. Lỗi hiển thị thời gian yêu cầu chưa thành công; lần thử mới bắt đầu từ 0. Đăng xuất xóa số đo của phiên.
+- Thời gian Get không phải countdown hiệu lực, không lưu lịch sử cá nhân cho user. Mã hết hạn được loại khỏi cache; lần đọc tiếp theo lấy mã mới từ HRM. Không phát hiện được việc đổi mã ngoài HRM sớm hơn timer đã quan sát khi cache vẫn còn hợp lệ.
+- Mục tiêu dưới 10 giây **chưa được xác nhận trên Vercel/Neon/HRM production**. Đo cả lần đầu, lần sau khi hết hạn và cache hit bằng UI/log. Mạng, thời gian đăng nhập HRM, Function region, Neon đang ngủ và cold start có thể làm vượt mục tiêu.
+- Không cần migration hoặc biến bắt buộc mới từ 2.3.x. Chưa kiểm tra bằng trình duyệt render thật trong môi trường hiện tại; UI được kiểm tra bằng DOM/mô phỏng tương tác.
+
+## Thay đổi 2.3.3 (lịch sử)
 
 - Đường Get khi cache hợp lệ giảm từ **3 xuống 2 lượt SQL**: gộp xác thực phiên/user, đọc cache, cấp quyền Get và ghi pending/denied vào một câu SQL nguyên tử; lượt còn lại kiểm tra lại quyền và ghi issued trước khi trả mã. CSRF được kiểm tra trước câu SQL có thao tác ghi. Mỗi Get vẫn có audit riêng.
 - Khi cần đọc mã mới, tái sử dụng Chromium và phiên HRM còn hợp lệ trên **cùng instance Vercel**. Mỗi lần đọc tạo trang mới, đi qua giao diện HRM bình thường và đóng trang sau khi đọc; nếu HRM yêu cầu đăng nhập lại thì dùng luồng đăng nhập hiện có. Không tự thử lại khi bị từ chối/xác minh/lỗi.
@@ -41,7 +52,7 @@ App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy
 
 1. Kiểm tra Origin/header/phiên bản, cookie, CSRF và cấu hình trước khi ghi DB.
 2. Một câu SQL xác thực phiên, trạng thái user/auth_version/config_stamp, đọc cache mã hóa và cấp quyền Get nguyên tử: một yêu cầu mỗi người tại một thời điểm, bắt đầu cách nhau ít nhất 10 giây. Ghi pending nếu được nhận, denied nếu bị giới hạn; phiên không hợp lệ không tạo gate/audit Get.
-3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, nhận lease 55 giây, kiểm tra lại cache rồi đọc HRM: mượn browser còn hợp lệ hoặc mở mới, tạo trang mới, đăng nhập khi form yêu cầu, đóng thông báo đổi mật khẩu nếu có, mở menu rồi đọc clipboard/timer. Trang được đóng sau mỗi lần đọc; browser còn hợp lệ có thể được giữ cho lần sau.
+3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, chuẩn bị runtime cục bộ song song với câu SQL nhận lease 55 giây/snapshot cache, rồi đọc HRM khi đã có lease và không còn cache hợp lệ: mượn browser còn hợp lệ hoặc mở mới, tạo trang mới, đăng nhập khi form yêu cầu, đóng thông báo đổi mật khẩu nếu có, mở menu rồi đọc clipboard/timer. Trang được đóng sau mỗi lần đọc; browser còn hợp lệ có thể được giữ cho lần sau.
 4. Ghi cache mã hóa. Kiểm tra lại phiên/user và ghi issued trong cùng một câu SQL trước khi trả mã. Nếu phiên bị thu hồi trong lúc đọc HRM hoặc chưa ghi được audit thì không trả mã.
 5. Trừ thời gian xử lý/SQL và truyền phản hồi khỏi hiệu lực. Client copy, hiện toast, đếm giây; hết hạn hoặc đăng xuất xóa mã khỏi bộ nhớ/ô thủ công. Clipboard hệ điều hành không tự xóa.
 
@@ -78,10 +89,10 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 99 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 106 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 
 Dùng X.Y.Z: patch sửa lỗi, minor thêm tính năng, major thay đổi không tương thích. Mỗi lần giao source tăng phiên bản; package.json là nguồn hiển thị, lockfile phải khớp. ZIP tên **Master_Password_Web_vX.Y.Z.zip**, package.json ở gốc; không chứa node_modules/dist/.env.local hoặc bí mật.
 
-Các file chính: api/ cho endpoint; lib/security.mjs, auth-api.mjs và store.mjs cho tài khoản/DB; lib/hrm-browser.mjs cho luồng HRM; lib/master-cache.mjs và shared-master.mjs cho cache; public/ cho UI/toast; database/ cho schema/migration; *-test.mjs cho kiểm thử.
+Các file chính: api/ cho endpoint; lib/security.mjs, auth-api.mjs và store.mjs cho tài khoản/DB; lib/hrm-browser.mjs cho luồng HRM; public/styles.css cho giao diện; lib/master-cache.mjs và shared-master.mjs cho cache; public/ cho UI/toast; database/ cho schema/migration; *-test.mjs cho kiểm thử.

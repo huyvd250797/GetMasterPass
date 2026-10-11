@@ -12,6 +12,13 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const getProgressTrack = document.getElementById('get-progress-track');
     const getProgressLabel = document.getElementById('get-progress-label');
     const getProgressStep = document.getElementById('get-progress-step');
+    const getElapsed = document.getElementById('get-elapsed');
+    const getDuration = document.getElementById('get-duration');
+    const getDurationValue = document.getElementById('get-duration-value');
+    const getDurationLabel = document.getElementById('get-duration-label');
+    const masterState = document.getElementById('master-state');
+    let requestStarted = 0;
+    const formatDuration = ms => (Math.max(0,ms)/1000).toFixed(1).replace('.',',');
     let getStep = 0, getEpoch = 0, getPercent = 0, getStarted = 0, getTimer;
     const getRanges = [[3,12,5000],[15,24,5000],[30,90,20000],[95,99,6000]];
     function renderFetching() {
@@ -24,6 +31,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       getProgressTrack.setAttribute('aria-valuenow', String(getPercent));
       getProgressTrack.setAttribute('aria-busy', String(getStep < 4));
       getProgressStep.textContent = `${getPercent}%`;
+      if (getElapsed) getElapsed.textContent = `${formatDuration(performance.now()-requestStarted)} giây`;
     }
     function fetching(step) {
       if (!Number.isInteger(step) || step < getStep || step > 4) return;
@@ -65,19 +73,22 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     let secret = '', lifetime = 0, wallStart = 0, monotonicStart = 0, timer, masterEpoch = 0;
     const remaining = () => Math.max(0, lifetime - Math.max(Date.now() - wallStart, performance.now() - monotonicStart));
     const message = (text, type = '') => {status.textContent = text; status.className = type;};
-    function expire() {
+    function expire({clearDuration=false}={}) {
       getEpoch++;clearFetching();
       masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
       copyButton.hidden = true; copyButton.disabled = false;
       button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
       message('');
+      if (masterState) {masterState.textContent = 'Sẵn sàng';masterState.dataset.state = 'ready';}
+      if (clearDuration && getDuration) getDuration.hidden = true;
     }
-    window.clearMaster = expire;
+    window.clearMaster = () => expire({clearDuration:true});
     function tick() {
       const ms = remaining();
       if (ms < 1000) {expire(); return;}
       seconds.textContent = String(Math.floor(ms / 1000));
       progress.style.width = `${Math.min(100, ms / 3000)}%`;
+      if (masterState) {masterState.textContent = ms<30000?'Sắp hết hiệu lực':'Mã đang hiệu lực';masterState.dataset.state = ms<30000?'expiring':'active';}
     }
     async function copy(retrieved=false) {
       if (!window.MasterSession?.user) return expire();
@@ -108,7 +119,9 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
       if (button.disabled) return;
-      const requestEpoch = ++getEpoch;clearFetching();fetching(0);
+      const requestEpoch = ++getEpoch;requestStarted = performance.now();clearFetching();fetching(0);
+      if (getDuration) getDuration.hidden = true;
+      if (masterState) {masterState.textContent = 'Đang xử lý';masterState.dataset.state = 'loading';}
       button.disabled = true; button.textContent = 'Đang lấy…'; message('');
       let start = performance.now();
       try {
@@ -128,6 +141,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         const transit = Math.max(0, performance.now() - start - processing);
         const ms = data.remainingMs - transit;
         if (typeof data.password !== 'string' || !data.password.trim() || !Number.isFinite(ms) || ms < 1000 || ms > 300000) throw new Error('INVALID_RESPONSE');
+        if (getDuration) {getDurationLabel.textContent='Lần Get vừa hoàn tất';getDurationValue.textContent=`${formatDuration(performance.now()-requestStarted)} giây`;getDuration.hidden=false;}
         fetching(4);
         masterEpoch++; secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
         button.hidden = true; copyButton.hidden = false;
@@ -173,9 +187,11 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         const description=error.message==='AUTH_NOT_CONFIGURED'&&window.MasterAccess?.errorText
           ?window.MasterAccess.errorText(error):errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.';
         message(description+details, 'error');
+        if (getDuration) {getDurationLabel.textContent='Thời gian yêu cầu chưa thành công';getDurationValue.textContent=`${formatDuration(performance.now()-requestStarted)} giây`;getDuration.hidden=false;}
+        if (masterState) {masterState.textContent = 'Cần thử lại';masterState.dataset.state = 'error';}
         button.textContent = 'Get master password';
       } finally {if (getEpoch === requestEpoch) {clearFetching();button.disabled = false;}}
     });
     document.addEventListener('visibilitychange', () => {if (secret) tick();});
     window.addEventListener('pageshow', () => {if (secret) tick();});
-    window.addEventListener('pagehide', expire);
+    window.addEventListener('pagehide', () => expire({clearDuration:true}));

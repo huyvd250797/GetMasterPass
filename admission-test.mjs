@@ -6,6 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {createStore} from './lib/store.mjs';
 import {authenticate,configStamp,digest} from './lib/security.mjs';
 import {handleMasterRequest} from './lib/master-api.mjs';
+import {createSharedMasterReader,sharedCacheScope} from './lib/shared-master.mjs';
 import {APP_VERSION} from './lib/app-version.mjs';
 import {testEnv,testHeaders,token,userId} from './test-support/auth-fixture.mjs';
 const origin='https://master-test.invalid';
@@ -37,11 +38,25 @@ test('atomic admission validates security and writes exactly one outcome per req
    let reads=0;const response=await handleMasterRequest(req(),{...options,reader:async()=>{reads++;throw new Error('Must not read');}});
    assert.equal(response.status,429);assert.equal(reads,0);assert.deepEqual(await counts(),{gates:1,audits:3});
   });
+  await t.test('cold Get uses four SQL requests; reset uses four again with a new code and expiry',async()=>{
+   let reads=0;
+   const fast=createSharedMasterReader({reader:async()=>({password:`TEST-FRESH-${++reads}`,remainingMs:90000})});
+   try{
+    for(let attempt=1;attempt<=2;attempt++){
+     await db.exec('DELETE FROM mp_get_gate');
+     if(attempt===2){await db.query("UPDATE mp_master_cache SET expires_at=now()-interval '1 second' WHERE scope=$1",[sharedCacheScope(testEnv)]);fast.clear();}
+     queries=0;
+     const r=await handleMasterRequest(req(),{...options,reader:env=>fast(env,{store})});
+     assert.equal(r.status,200);assert.equal((await r.json()).password,`TEST-FRESH-${attempt}`);assert.equal(queries,4);
+    }
+    assert.equal(reads,2);
+   }finally{fast.clear();await db.exec("DELETE FROM mp_audit WHERE status='issued';DELETE FROM mp_get_gate");}
+  });
   await t.test('changed admin password prevents admission before any gate or audit write',async()=>{
    const adminToken='b'.repeat(64);
    await db.query("INSERT INTO mp_sessions(token_hash,role,username,full_name,config_stamp,expires_at) VALUES($1,'admin','admin','TEST ADMIN',$2,now()+interval '1 hour')",[digest(adminToken),configStamp(testEnv,'admin')]);
    await assert.rejects(authenticate(req({Cookie:`__Host-mp_session=${adminToken}`}),{...testEnv,ADMIN_PASSWORD:'TEST-CHANGED-PASSWORD'},store,{getId:randomUUID()}),e=>e.appCode==='UNAUTHENTICATED');
-   assert.deepEqual(await counts(),{gates:1,audits:3});
+   assert.deepEqual(await counts(),{gates:0,audits:3});
   });
  }finally{await db.close();}
 });

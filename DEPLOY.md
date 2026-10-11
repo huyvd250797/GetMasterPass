@@ -1,10 +1,10 @@
-# Deploy Master Password v2.3.3
+# Deploy Master Password v2.4.0
 
-## Nâng cấp từ 2.3.0, 2.3.1 hoặc 2.3.2
+## Nâng cấp từ 2.3.x
 
-Giải nén **Master_Password_Web_v2.3.3.zip**, thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần chạy SQL hoặc thêm biến nếu 2.3.0 đã hoạt động. Kiểm tra footer và /api/version cùng là **2.3.3**.
+Giải nén **Master_Password_Web_v2.4.0.zip**, thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần chạy SQL hoặc thêm biến nếu 2.3.0 đã hoạt động. Kiểm tra footer và /api/version cùng là **2.4.0**.
 
-Bản này giảm Get khi có cache hợp lệ từ 3 xuống 2 lượt SQL và tái sử dụng Chromium/phiên HRM trên cùng instance để giảm khởi động và đăng nhập khi cần mã mới. Mỗi Get vẫn kiểm tra quyền và ghi lịch sử riêng. Không cần thêm biến bắt buộc; giữ nguyên các biến hiện tại.
+Bản này chuẩn bị Chromium song song với truy vấn lease/cache, giảm luồng đọc HRM mới từ 5 xuống 4 lượt SQL khi không tranh chấp; cache hit vẫn 2 lượt SQL. Giữ tái sử dụng Chromium/phiên HRM trên cùng instance. Giao diện mới hiển thị thời gian chờ và tổng thời gian Get. Mỗi Get vẫn kiểm tra quyền và ghi lịch sử riêng. Không cần thêm biến bắt buộc; giữ nguyên các biến hiện tại.
 
 Get có thanh phần trăm tăng dần, ghi rõ “Tiến độ ước tính”. Khi chờ HRM, % tăng chậm dần và dừng dưới 90%; khi server đã đọc mã và đang kiểm tra/ghi audit, chuyển lên 95%, luôn dưới 100%. Chỉ đạt 100% khi nhận kết quả hợp lệ. % không dự đoán số giây còn lại. Lỗi/đăng xuất ẩn và reset thanh. Toast/copy/countdown giữ như trước. Không có dòng “Đang kết nối HRM”.
 
@@ -12,7 +12,7 @@ Dùng một POST streaming để gửi trạng thái; không polling hoặc thê
 
 ## Cài mới hoặc nâng cấp từ 2.2.0
 
-1. Giải nén **Master_Password_Web_v2.3.3.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
+1. Giải nén **Master_Password_Web_v2.4.0.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` **trước khi deploy**. Migration chỉ thêm bảng cache, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
 2. Giữ nguyên sáu biến server đang có: HRM_USERNAME, HRM_PASSWORD, ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET, DATABASE_URL. Không cần biến bắt buộc mới; cache dùng chung mặc định bật.
 3. Thay source trong checkout GitHub đang nối Vercel. ZIP có package.json ở gốc. Không đưa .env.local hoặc secret vào Git.
 
@@ -22,14 +22,14 @@ npm test
 npm run build
 git status
 git add .
-git commit -m "Reduce Get SQL and reuse authenticated HRM browser v2.3.3"
+git commit -m "Optimize cold reads and redesign Get timing UX v2.4.0"
 git push
 ```
 
 Nếu remote có commit mới, pull và xử lý xung đột; không force push. Vercel phải build commit mới, không Redeploy commit 2.2.0.
 
 4. Cấu hình Framework **Other**, Root Directory chứa package.json, Build `npm run build`, Output `dist`, Node.js **22.x**. vercel.json đã đóng gói Chromium và giới hạn API Get 60 giây. Build không truy cập DB/HRM.
-5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.3.3**; domain Production cần trỏ vào deployment này.
+5. Chờ Ready, mở deployment mới. Footer và `/api/version` phải là **2.4.0**; domain Production cần trỏ vào deployment này.
 
 ## Cài mới và biến môi trường
 
@@ -59,7 +59,7 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 - Chưa đăng nhập: form login; Get không có phiên trả 401 và không đọc HRM.
 - Admin: tạo/khóa/mở/đặt lại mật khẩu user; xem lịch sử. Không có tab đổi mật khẩu của admin; gọi action change_password bằng phiên admin cũng trả 403.
 - User: Get tự copy và hiện toast; Copy lại hiện toast mới, giữ countdown và không tạo lượt Get mới. Hết hạn/đăng xuất xóa mã khỏi bộ nhớ UI.
-- Không có dòng kết nối HRM hoặc câu “Lấy mật khẩu và copy ngay vào clipboard.” Get đang chạy chỉ có trạng thái nút “Đang lấy…”.
+- Không có dòng kết nối HRM hoặc câu “Lấy mật khẩu và copy ngay vào clipboard.” Get đang chạy có nút “Đang lấy…”, progress % ước tính và đồng hồ “Đã chờ X,X giây”. Sau khi nhận mã có thời gian Get; Copy lại giữ nguyên số đo, countdown và không gọi Get mới.
 - User không có tab lịch sử; GET/POST `/api/history` bằng phiên user phải trả 403.
 - User vào Đổi mật khẩu, nhập mật khẩu hiện tại và mật khẩu mới ≥4 ký tự, xác nhận. Thành công tự đăng xuất mọi phiên, đăng nhập lại bằng mật khẩu mới. Mật khẩu cũ sai không thay đổi tài khoản.
 - Admin xóa một dòng: xác nhận hoặc hủy. Xóa tất cả: áp dụng mọi người và cả lịch sử ngoài bộ lọc; pending chưa quá 65 giây được giữ để Get đang chạy hoàn tất. Các audit đăng nhập/tài khoản/xóa lịch sử được giữ. Số lần Get và thống kê sẽ giảm theo lịch sử bị xóa.
@@ -73,6 +73,14 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 4. Đường cache hit dùng **hai lượt SQL** (xác thực/cache/admission/pending, rồi kiểm tra lại quyền/issued) và một request Get từ UI. Khi Neon ngủ, mạng chậm hoặc cache hết hạn, thời gian vẫn có thể tăng. Chưa có số đo production; không bảo đảm lấy tức thì.
 5. Vercel Function nên gần Neon. Nếu Neon của bạn ở Singapore, có thể thêm `"regions": ["sin1"]` ở cấp gốc vercel.json rồi deploy để Function gần Neon/HRM Việt Nam. Source giữ vùng hiện tại vì chưa biết region database đang có. Không chuyển DB đang có chỉ để áp dụng cấu hình mẫu. Tài liệu: https://vercel.com/docs/functions/configuring-functions/region và https://vercel.com/docs/regions.
 6. Để đối chiếu: HRM_SHARED_CACHE_ENABLED=0 tắt Neon cache (còn RAM); HRM_CACHE_ENABLED=0 tắt cả hai; HRM_LIGHTWEIGHT_BROWSER=0 tải đầy đủ tài nguyên HRM; HRM_BROWSER_REUSE=0 đóng browser sau mỗi lần đọc. Các biến tùy chọn, không cần thêm cho mặc định.
+
+### Đánh giá mục tiêu dưới 10 giây
+
+1. Lấy mã khi chưa có cache và ghi số giây trong UI. Đợi đúng timer HRM hết hiệu lực, Get lần tiếp theo và ghi thời gian. Lấy thêm bằng một tài khoản khác khi mã đang còn hiệu lực để đo cache hit. Không xóa tài khoản/lịch sử/DB chỉ để đo tốc độ.
+2. Mỗi nhóm cần vài lần đo để thấy cả cold start và instance đã hoạt động. Mốc 10 giây là mục tiêu, chưa có dữ liệu production để bảo đảm. Thời gian UI gồm click → nhận/kiểm tra mã; không bao gồm cấp quyền clipboard. processingMs trong log là thời gian server, có thể thấp hơn UI do mạng/cold start.
+3. Để lại mặc định các lớp cache và browser reuse; kiểm tra Function cùng/gần region Neon. Source không tự đổi vùng hoặc tăng cấu hình trả phí. Xem thiết lập Fluid compute/CPU trong Vercel nếu cold start còn chiếm phần lớn thời gian: https://vercel.com/docs/fluid-compute và https://vercel.com/docs/functions/configuring-functions/memory.
+4. Nếu vượt 10 giây, gửi thời gian UI và một dòng log master_request_completed chỉ có source/readerMs/processingMs/version/requestId để phân tích. Không gửi master, mật khẩu HRM, DATABASE_URL hoặc SESSION_SECRET.
+5. Bản này đã qua 106 kiểm thử và build trên Node 24; Vercel target Node 22.x. Chưa chạy HRM/Neon production end-to-end hoặc kiểm tra giao diện render bằng browser thật.
 
 Browser được giữ tối đa 10 phút không sử dụng và tối đa 30 phút từ khi khởi động; mỗi Get dùng trang mới và đóng trang. Instance mới/mất kết nối/lỗi/đổi credential sẽ mở browser mới. HRM hiện form đăng nhập thì đăng nhập lại bình thường. Cookies không được xuất vào Neon/log/API. Nếu thấy RAM tăng hoặc HRM không tương thích với phiên browser giữ lại, đặt `HRM_BROWSER_REUSE=0` và deploy lại. Không có đảm bảo instance/browser luôn được giữ giữa các Get.
 
@@ -92,6 +100,6 @@ Cache hết hạn bị từ chối nhưng ciphertext có thể còn trong bảng
 | HISTORY_NOT_DELETABLE | Dòng đang xử lý hoặc đã xóa; tải lại lịch sử. |
 | RATE_LIMITED | Login: 8/15 phút mỗi username, 60/phút toàn app; Get: ít nhất 10 giây/lần và một lượt đang chạy; đổi mật khẩu: 5/15 phút mỗi user; xóa lịch sử: 20/phút. |
 | TRY_AGAIN | Đang chờ instance khác đọc HRM hoặc lease quá lâu; thử lại sau vài giây. |
-| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.3.3. |
+| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.4.0. |
 
 Nếu HRM lỗi, chỉ gửi error/stage/reason/requestId. Các deployment cũ vẫn có source/config cũ; cần quản lý các URL cũ riêng. Bản này chưa deploy hoặc kiểm tra Neon/HRM production thực tế.
