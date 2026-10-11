@@ -96,12 +96,12 @@ test('PostgreSQL integration: accounts, sessions, revocation, audit and concurre
     return {password:'TEST-BLOCKED-MASTER',remainingMs:90000};
    }});assert.equal(r.status,401);assert.doesNotMatch(await r.text(),/TEST-BLOCKED-MASTER/);
   });
-  await t.test('warm production route returns encrypted shared cache using exactly three SQL requests',async()=>{
+  await t.test('warm production route returns encrypted shared cache using exactly two SQL requests',async()=>{
    const scope=sharedCacheScope(testEnv),lease=randomUUID();
    const sealed=sealMaster(testEnv,{password:'TEST-PRODUCTION-CACHE',remainingMs:90000});
    assert.equal(await store.cacheAcquire(scope,lease),true);assert.equal(await store.cachePublish(scope,lease,sealed.payload,sealed.expiresAt),true);
    queries=0;const r=await handleMasterRequest(req('/api/master-password',admin,{}),{...options,logger:()=>{}});
-   assert.equal(r.status,200);assert.equal((await r.json()).password,'TEST-PRODUCTION-CACHE');assert.equal(queries,3);
+   assert.equal(r.status,200);assert.equal((await r.json()).password,'TEST-PRODUCTION-CACHE');assert.equal(queries,2);
    const row=await store.sessionWithCache('invalid-token',scope);assert.equal(row,undefined);
   });
   await t.test('history deletion is admin-only, confirms all, retains active requests and other audit actions',async()=>{

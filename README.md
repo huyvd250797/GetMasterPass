@@ -1,8 +1,17 @@
-# Master Password — v2.3.2
+# Master Password — v2.3.3
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
 
-## Thay đổi 2.3.2
+## Thay đổi 2.3.3
+
+- Đường Get khi cache hợp lệ giảm từ **3 xuống 2 lượt SQL**: gộp xác thực phiên/user, đọc cache, cấp quyền Get và ghi pending/denied vào một câu SQL nguyên tử; lượt còn lại kiểm tra lại quyền và ghi issued trước khi trả mã. CSRF được kiểm tra trước câu SQL có thao tác ghi. Mỗi Get vẫn có audit riêng.
+- Khi cần đọc mã mới, tái sử dụng Chromium và phiên HRM còn hợp lệ trên **cùng instance Vercel**. Mỗi lần đọc tạo trang mới, đi qua giao diện HRM bình thường và đóng trang sau khi đọc; nếu HRM yêu cầu đăng nhập lại thì dùng luồng đăng nhập hiện có. Không tự thử lại khi bị từ chối/xác minh/lỗi.
+- Một browser được giữ tối đa 10 phút không sử dụng và 30 phút kể từ khi tạo. Kiểm tra cả đồng hồ thực/monotonic sau khi instance tạm dừng; loại bỏ khi mất kết nối, đổi HRM credential/SESSION_SECRET hoặc lỗi. Hai lượt đồng thời dùng browser riêng để không tranh chấp clipboard.
+- Cookies HRM chỉ thuộc browser server; không xuất vào DB, log hoặc API. Việc giữ browser làm tăng RAM của instance. Có thể đặt `HRM_BROWSER_REUSE=0` để đóng browser sau mỗi lần đọc như trước.
+- Giữ progress %, toast, Copy lại, phân quyền và thời gian hiệu lực gốc. Không cần SQL migration hoặc biến bắt buộc mới từ 2.3.x.
+- Chưa đo độ trễ trên Vercel/HRM thật; kết quả kiểm thử xác nhận số SQL và số lần khởi động/đăng nhập đã giảm, không cam kết số giây.
+
+## Thay đổi 2.3.2 (lịch sử)
 
 - Thay bộ đếm bước 2/4 bằng phần trăm tăng dần, nhãn “Tiến độ ước tính”, giữ các trạng thái server hiện có.
 - Khi đang chờ, % tăng theo thời gian ở từng giai đoạn và chậm dần: chuẩn bị 3–12%, xử lý 15–24%, lấy mã 30–90%. Khi server đọc mã xong và bắt đầu kiểm tra phiên/audit, chuyển lên 95%, tăng chậm và luôn dưới 100%. Chỉ lên 100% sau khi client nhận và kiểm tra kết quả hợp lệ.
@@ -19,7 +28,7 @@ App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy
 - Frontend yêu cầu application/x-ndjson. Các dòng progress chỉ chứa type/step/version. Dòng result chứa status và data; status trong dòng này là kết quả API thực, vì HTTP stream đã mở có status 200. Mã chỉ nằm trong result sau xác thực và audit như trước. Client không yêu cầu streaming vẫn nhận JSON/HTTP status cũ.
 - Giữ nguyên schema của 2.3.0, không cần migration mới hoặc biến môi trường mới.
 
-## Thay đổi 2.3.0
+## Thay đổi 2.3.0 (lịch sử)
 
 - Get dùng RAM cache và cache mã hóa dùng chung trên Neon. Instance mới có thể lấy mã đang còn hiệu lực mà không mở Chromium/đăng nhập HRM. Các instance dùng lease trong DB để gộp lần đọc HRM khi đồng thời thiếu cache.
 - Bỏ lượt gọi `/api/version` trước mỗi Get. Server vẫn kiểm tra phiên bản trước HRM; response và footer giữ cùng phiên bản. Đường Get khi có cache hợp lệ cần ba lượt SQL: xác thực kèm cache, nhận quyền Get/ghi pending, kiểm tra lại phiên kèm ghi issued.
@@ -30,11 +39,11 @@ App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy
 
 ## Luồng Get
 
-1. Kiểm tra Origin/header/phiên bản, cookie, CSRF và cấu hình. Đọc phiên còn hiệu lực, trạng thái user và auth_version cùng cache mã hóa trong một câu SQL.
-2. DB cấp quyền Get nguyên tử: một yêu cầu mỗi người tại một thời điểm, bắt đầu cách nhau ít nhất 10 giây; ghi pending riêng cho mỗi yêu cầu.
-3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, nhận lease 55 giây, kiểm tra lại cache rồi thực hiện luồng HRM hiện có: đăng nhập, đóng thông báo đổi mật khẩu nếu xuất hiện, hover menu rồi click khi cần, đọc clipboard/timer rồi đóng browser.
+1. Kiểm tra Origin/header/phiên bản, cookie, CSRF và cấu hình trước khi ghi DB.
+2. Một câu SQL xác thực phiên, trạng thái user/auth_version/config_stamp, đọc cache mã hóa và cấp quyền Get nguyên tử: một yêu cầu mỗi người tại một thời điểm, bắt đầu cách nhau ít nhất 10 giây. Ghi pending nếu được nhận, denied nếu bị giới hạn; phiên không hợp lệ không tạo gate/audit Get.
+3. Dùng mã còn hiệu lực trong RAM hoặc giải mã cache Neon. Nếu không có, nhận lease 55 giây, kiểm tra lại cache rồi đọc HRM: mượn browser còn hợp lệ hoặc mở mới, tạo trang mới, đăng nhập khi form yêu cầu, đóng thông báo đổi mật khẩu nếu có, mở menu rồi đọc clipboard/timer. Trang được đóng sau mỗi lần đọc; browser còn hợp lệ có thể được giữ cho lần sau.
 4. Ghi cache mã hóa. Kiểm tra lại phiên/user và ghi issued trong cùng một câu SQL trước khi trả mã. Nếu phiên bị thu hồi trong lúc đọc HRM hoặc chưa ghi được audit thì không trả mã.
-5. Trừ thời gian đọc/đóng browser/SQL và truyền phản hồi khỏi hiệu lực. Client copy, hiện toast, đếm giây; hết hạn hoặc đăng xuất xóa mã khỏi bộ nhớ/ô thủ công. Clipboard hệ điều hành không tự xóa.
+5. Trừ thời gian xử lý/SQL và truyền phản hồi khỏi hiệu lực. Client copy, hiện toast, đếm giây; hết hạn hoặc đăng xuất xóa mã khỏi bộ nhớ/ô thủ công. Clipboard hệ điều hành không tự xóa.
 
 `issued` là backend đã ghi nhận và chuẩn bị trả mã, không chứng minh trình duyệt đã nhận/copy. Mã đã copy ra ngoài app không thể bị thu hồi bằng cách khóa tài khoản. Nhật ký app xác định người yêu cầu, không chứng minh người sử dụng mã tại hệ thống khác.
 
@@ -53,7 +62,8 @@ Lịch sử Get hiển thị giờ Việt Nam, lọc người/ngày, phân trang
 - Mặc định bật cả hai lớp cache. `HRM_SHARED_CACHE_ENABLED=0`: tắt cache Neon, còn RAM cache. `HRM_CACHE_ENABLED=0`: tắt cả hai và đọc HRM mới mỗi Get. Migration vẫn nên chạy trước deploy để schema đồng nhất.
 - `HRM_LIGHTWEIGHT_BROWSER=0`: tải lại ảnh/font/media HRM; mặc định bỏ tài nguyên nội bộ không cần thiết, giữ CSS/JS/API và tài nguyên xác minh bên ngoài.
 - Runtime Logs chỉ có nhãn source (`hrm`, `memory`, `shared`, `database`), readerMs/processingMs, version và requestId. `shared` là chờ cùng reader trên một instance; `database` là giải mã cache Neon.
-- Cache hợp lệ không cần Chromium. Khi toàn bộ cache hết hạn, lần đầu vẫn chịu thời gian HRM, Chromium và mạng/DB. Không tự lấy trước theo lịch, không giữ browser mở. Chưa đo trên Vercel/HRM thật nên không cam kết số giây.
+- Cache hợp lệ không cần Chromium. Khi cache hết hạn, browser/phiên HRM có thể được dùng lại nếu còn trên cùng instance. Instance mới hoặc browser đã hết hạn vẫn phải khởi động và đăng nhập; không tự lấy trước theo lịch. Giữ browser là tối ưu best effort, không đảm bảo Vercel luôn giữ instance. Chưa đo trên Vercel/HRM thật nên không cam kết số giây.
+- `HRM_BROWSER_REUSE=0`: tắt giữ browser/phiên HRM; độc lập với hai lớp cache master.
 - Chọn vùng Function gần Neon; xem DEPLOY.md. Không tự chuyển database đang có sang vùng khác.
 
 ## Local và kiểm thử
@@ -68,7 +78,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 88 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 99 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 

@@ -143,3 +143,19 @@ test('lightweight browser skips only HRM image/font/media, preserving UI scripts
  }
  const n=actions.length;handler({isInterceptResolutionHandled:()=>true});assert.equal(actions.length,n);
 });
+test('warm HRM browser keeps the ordinary login session while pages close after each read',async()=>{
+ const {createBrowserPool}=await import('./lib/browser-pool.mjs');const pool=createBrowserPool();let launches=0,loggedIn=false,logins=0,closedPages=0,closedBrowsers=0;
+ const browser={connected:true,defaultBrowserContext:()=>({overridePermissions:async()=>{}}),newPage:async()=>{
+  const {page,actions}=makePage();const lookup=page.$;
+  page.$=async selector=>selector==='input[name="UserName"]'&&loggedIn?null:lookup(selector);
+  page.close=async()=>{closedPages++;if(actions.includes('submitLogin')){loggedIn=true;logins++;}};
+  return page;
+ },close:async()=>{closedBrowsers++;}};
+ const options={browserPool:pool,platform:'linux',loadPuppeteer:async()=>({default:{launch:async()=>{launches++;return browser;}}}),loadChromium:async()=>({default:{args:[],executablePath:async()=>'/TEST'}})};
+ const env={VERCEL:'1',HRM_USERNAME:'TEST',HRM_PASSWORD:'TEST'};
+ try{
+  await readMasterFromHrm(env,options);await readMasterFromHrm(env,options);
+  assert.equal(launches,1);assert.equal(logins,1);assert.equal(closedPages,2);assert.equal(closedBrowsers,0);
+  loggedIn=false;await readMasterFromHrm(env,options);assert.equal(logins,2);assert.equal(launches,1);
+ }finally{await pool.clear();}assert.equal(closedBrowsers,1);
+});
