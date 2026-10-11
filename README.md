@@ -1,8 +1,18 @@
-# Master Password — v2.4.0
+# Master Password — v2.4.1
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.2.0 cần chạy `database/migrate-v2.3.0.sql` trên Neon một lần; không tạo lại tài khoản.
 
-## Thay đổi 2.4.0
+## Thay đổi 2.4.1
+
+- Gom icon và tên Master Password thành một hàng ở góc trên trái của app, giảm padding và khoảng trống đầu trang. Bỏ ASC | WORKSPACE và câu giới thiệu dưới tên app.
+- Bỏ hai dòng “Mã còn hiệu lực có thể copy lại ngay tại đây.” và “Phiên đăng nhập được kiểm tra cho mỗi lần Get”.
+- Tách đồng hồ Get khỏi bộ cập nhật progress %. Đồng hồ lấy chênh lệch timestamp từ lúc click đến khi nhận/kiểm tra kết quả, cập nhật độc lập mỗi 100 ms, hiển thị một chữ số thập phân. Không lấy phần trăm, số lần callback hoặc số bước để tính giây.
+- Kết hợp performance.now và Date.now để tính thời gian đã trôi qua khi browser tạm dừng hoặc máy ngủ; số đo không giảm. Khi quay lại tab/pageshow, đồng hồ cập nhật lại ngay từ timestamp. Việc đổi giờ hệ thống về phía trước trong lúc Get có thể ảnh hưởng số đo wall clock.
+- Ví dụ: progress nhảy từ 30% lên 95% ở giây thứ 2 thì đồng hồ vẫn là 2,0 giây; bị ngừng callback 15 giây thì lúc tiếp tục phải là 17,0 giây. Kiểm thử xác nhận cả hai trường hợp.
+- Copy lại giữ nguyên thời gian Get hoàn tất. Lần Get mới bắt đầu từ 0, lỗi giữ số giây đã chờ, đăng xuất dừng/xóa số đo. Thời gian Get độc lập với countdown hiệu lực của mã.
+- Không đổi luồng HRM/SQL, không có migration hoặc biến môi trường mới từ 2.4.0. Chưa kiểm tra render bằng browser thật hoặc HRM production trong môi trường này.
+
+## Thay đổi 2.4.0 (lịch sử)
 
 - Khi thiếu cache hoặc mã hết hiệu lực, import Puppeteer/Chromium song song; chuẩn bị binary Chromium đồng thời với câu SQL nhận lease/cache. Chỉ mở browser, đăng nhập và đọc HRM sau khi nhận lease. Không thêm request Get từ UI hoặc tự gọi HRM trước khi user bấm Get.
 - Gộp nhận lease và lấy snapshot cache vào một câu SQL. Lượt đọc HRM mới không tranh chấp dùng **4 lượt SQL** thay vì 5 (admission → lease/snapshot → publish cache → kiểm tra quyền/issued). Cache hit giữ **2 lượt SQL**. Những lần chờ instance khác có thể cần thêm truy vấn; không coi 4 là số cố định cho mọi tình huống.
@@ -89,7 +99,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 106 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 108 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 

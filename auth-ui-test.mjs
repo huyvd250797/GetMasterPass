@@ -11,8 +11,9 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false}
  const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
  w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;
- let now=0,nextTimer=0;const intervals=new Map();
+ let now=0,wallNow=1700000000000,nextTimer=0;const intervals=new Map();
  Object.defineProperty(w.performance,'now',{value:()=>now});
+ w.Date.now=()=>wallNow;
  w.setInterval=(fn,ms)=>{const id=++nextTimer;intervals.set(id,{fn,ms,at:now});return id;};w.clearInterval=id=>intervals.delete(id);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async s=>copies.push(s)}});
@@ -45,7 +46,7 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false}
  async function submit(id){$(id).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await flush();}
  async function login(username){$('login-username').value=username;$('login-password').value='TEST-ONLY-PASSWORD';await submit('login-form');}
  async function click(id){$(id).click();await flush();}
- return {dom,w,$,requests,copies,users,history,login,click,submit,advance:async ms=>{now+=ms;for(const item of [...intervals.values()])if(now-item.at>=item.ms){item.at=now;item.fn();}await flush();},resolve:()=>resolveMaster(),push:async item=>{streamController.enqueue(new TextEncoder().encode(JSON.stringify(item)+'\n'));await flush();},finish:async()=>{streamController.close();await flush();},chunk:async text=>{streamController.enqueue(new TextEncoder().encode(text));await flush();}};
+ return {dom,w,$,requests,copies,users,history,login,click,submit,advance:async(ms,{runTimers=true,wallOnly=false}={})=>{if(!wallOnly)now+=ms;wallNow+=ms;if(runTimers)for(const item of [...intervals.values()])if(now-item.at>=item.ms){item.at=now;item.fn();}await flush();},resolve:()=>resolveMaster(),push:async item=>{streamController.enqueue(new TextEncoder().encode(JSON.stringify(item)+'\n'));await flush();},finish:async()=>{streamController.close();await flush();},chunk:async text=>{streamController.enqueue(new TextEncoder().encode(text));await flush();}};
 }
 test('UI login, admin create/lock/reset, history and logout clear private content',async()=>{
  const h=await setup();try{
@@ -89,6 +90,26 @@ test('failed Get reports its elapsed duration and the next attempt starts at zer
   assert.equal(h.$('get-duration-value').textContent,'11,3 giây');assert.match(h.$('get-duration-label').textContent,/chưa thành công/);assert.equal(h.$('master-state').dataset.state,'error');
   await h.click('get');assert.equal(h.$('get-duration').hidden,true);assert.equal(h.$('get-elapsed').textContent,'0,0 giây');
   await h.click('logout');await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-LATE',remainingMs:90000,processingMs:0}});await h.finish();assert.equal(h.$('get-duration').hidden,true);assert.equal(h.copies.length,0);
+ }finally{h.dom.window.close();}
+});
+test('progress jumps do not change the clock; suspended callbacks catch up to actual elapsed time',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');await h.advance(2000);
+  const before=h.$('get-elapsed').textContent;
+  await h.push({type:'progress',step:3,version:APP_VERSION});assert.equal(h.$('get-progress-step').textContent,'95%');assert.equal(h.$('get-elapsed').textContent,before);
+  await h.advance(15000,{runTimers:false});h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));
+  assert.equal(h.$('get-elapsed').textContent,'17,0 giây');assert.equal(h.$('get-progress-step').textContent,'95%');
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-REAL-TIME',remainingMs:90000,processingMs:17000}});await h.finish();
+  assert.equal(h.$('get-duration-value').textContent,'17,0 giây');
+ }finally{h.dom.window.close();}
+});
+test('wall elapsed time covers sleep even when the monotonic clock does not advance',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');await h.advance(10250,{runTimers:false,wallOnly:true});
+  h.w.dispatchEvent(new h.w.Event('pageshow'));assert.equal(h.$('get-elapsed').textContent,'10,3 giây');
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-SLEEP',remainingMs:90000,processingMs:10250}});await h.finish();
+  assert.equal(h.$('get-duration-value').textContent,'10,3 giây');
+  await h.advance(5000);await h.click('copy');assert.equal(h.$('get-duration-value').textContent,'10,3 giây');
  }finally{h.dom.window.close();}
 });
 test('configuration diagnostics appear on page load and failed login using only known labels',async()=>{

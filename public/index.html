@@ -9,10 +9,10 @@
 </head>
 <body>
   <main>
-    <div class="brand-label">ASC <span>WORKSPACE</span></div>
+    <header class="app-header">
     <div class="icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.5"/><path d="m11.2 11.2 9 9M16 16l2.5-2.5M18.5 18.5 21 16"/></svg></div>
     <h1>Master Password</h1>
-    <p class="header-caption">Truy cập có kiểm soát. Thao tác gọn gàng.</p>
+    </header>
     <section id="login-panel">
       <form id="login-form">
         <label for="login-username">Tên đăng nhập</label><input id="login-username" name="username" autocomplete="username" required maxlength="64">
@@ -32,7 +32,6 @@
       <section id="master-panel" aria-label="Lấy mật khẩu master">
         <div class="master-heading"><div><p class="eyebrow">MASTER ACCESS</p><h2>Lấy mật khẩu master</h2></div><span id="master-state" class="state-pill" data-state="ready">Sẵn sàng</span></div>
         <div class="master-content">
-        <p class="master-caption">Mã còn hiệu lực có thể copy lại ngay tại đây.</p>
     <section id="active" hidden aria-label="Thời gian còn hiệu lực">
       <p id="seconds">0</p><p class="timer-label">giây còn hiệu lực</p>
       <p class="active-note">Dùng mã trước khi thời gian kết thúc.</p>
@@ -49,7 +48,6 @@
     <p id="status" role="status" aria-live="polite"></p>
     <div id="get-duration" class="duration-card" role="status" aria-live="polite" hidden><span id="get-duration-label">Lần Get vừa hoàn tất</span><strong id="get-duration-value">0,0 giây</strong></div>
         </div>
-        <div class="master-footnote"><span class="small-dot"></span>Phiên đăng nhập được kiểm tra cho mỗi lần Get</div>
       </section>
       <section id="history-panel" hidden>
         <h2>Lịch sử lấy master</h2>

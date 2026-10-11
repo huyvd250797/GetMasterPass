@@ -17,8 +17,22 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const getDurationValue = document.getElementById('get-duration-value');
     const getDurationLabel = document.getElementById('get-duration-label');
     const masterState = document.getElementById('master-state');
-    let requestStarted = 0;
+    let requestStarted = 0, requestWallStarted = 0, requestMilliseconds = 0, requestClockRunning = false, requestClockTimer;
     const formatDuration = ms => (Math.max(0,ms)/1000).toFixed(1).replace('.',',');
+    function elapsedRequest() {
+      if (requestClockRunning) requestMilliseconds = Math.max(requestMilliseconds,0,performance.now()-requestStarted,Date.now()-requestWallStarted);
+      return requestMilliseconds;
+    }
+    function renderElapsed() {
+      if (getElapsed) getElapsed.textContent = `${formatDuration(elapsedRequest())} giây`;
+    }
+    function stopRequestClock() {
+      elapsedRequest();requestClockRunning = false;clearInterval(requestClockTimer);requestClockTimer = undefined;
+    }
+    function startRequestClock() {
+      stopRequestClock();requestStarted = performance.now();requestWallStarted = Date.now();requestMilliseconds = 0;requestClockRunning = true;
+      renderElapsed();requestClockTimer = setInterval(renderElapsed,100);
+    }
     let getStep = 0, getEpoch = 0, getPercent = 0, getStarted = 0, getTimer;
     const getRanges = [[3,12,5000],[15,24,5000],[30,90,20000],[95,99,6000]];
     function renderFetching() {
@@ -31,7 +45,6 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       getProgressTrack.setAttribute('aria-valuenow', String(getPercent));
       getProgressTrack.setAttribute('aria-busy', String(getStep < 4));
       getProgressStep.textContent = `${getPercent}%`;
-      if (getElapsed) getElapsed.textContent = `${formatDuration(performance.now()-requestStarted)} giây`;
     }
     function fetching(step) {
       if (!Number.isInteger(step) || step < getStep || step > 4) return;
@@ -75,6 +88,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const message = (text, type = '') => {status.textContent = text; status.className = type;};
     function expire({clearDuration=false}={}) {
       getEpoch++;clearFetching();
+      stopRequestClock();
       masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
       copyButton.hidden = true; copyButton.disabled = false;
       button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
@@ -119,7 +133,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
       if (button.disabled) return;
-      const requestEpoch = ++getEpoch;requestStarted = performance.now();clearFetching();fetching(0);
+      const requestEpoch = ++getEpoch;clearFetching();startRequestClock();fetching(0);
       if (getDuration) getDuration.hidden = true;
       if (masterState) {masterState.textContent = 'Đang xử lý';masterState.dataset.state = 'loading';}
       button.disabled = true; button.textContent = 'Đang lấy…'; message('');
@@ -141,7 +155,8 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         const transit = Math.max(0, performance.now() - start - processing);
         const ms = data.remainingMs - transit;
         if (typeof data.password !== 'string' || !data.password.trim() || !Number.isFinite(ms) || ms < 1000 || ms > 300000) throw new Error('INVALID_RESPONSE');
-        if (getDuration) {getDurationLabel.textContent='Lần Get vừa hoàn tất';getDurationValue.textContent=`${formatDuration(performance.now()-requestStarted)} giây`;getDuration.hidden=false;}
+        stopRequestClock();renderElapsed();
+        if (getDuration) {getDurationLabel.textContent='Lần Get vừa hoàn tất';getDurationValue.textContent=`${formatDuration(elapsedRequest())} giây`;getDuration.hidden=false;}
         fetching(4);
         masterEpoch++; secret = data.password; lifetime = ms; wallStart = Date.now(); monotonicStart = performance.now();
         button.hidden = true; copyButton.hidden = false;
@@ -187,11 +202,12 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
         const description=error.message==='AUTH_NOT_CONFIGURED'&&window.MasterAccess?.errorText
           ?window.MasterAccess.errorText(error):errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.';
         message(description+details, 'error');
-        if (getDuration) {getDurationLabel.textContent='Thời gian yêu cầu chưa thành công';getDurationValue.textContent=`${formatDuration(performance.now()-requestStarted)} giây`;getDuration.hidden=false;}
+        stopRequestClock();renderElapsed();
+        if (getDuration) {getDurationLabel.textContent='Thời gian yêu cầu chưa thành công';getDurationValue.textContent=`${formatDuration(elapsedRequest())} giây`;getDuration.hidden=false;}
         if (masterState) {masterState.textContent = 'Cần thử lại';masterState.dataset.state = 'error';}
         button.textContent = 'Get master password';
-      } finally {if (getEpoch === requestEpoch) {clearFetching();button.disabled = false;}}
+      } finally {if (getEpoch === requestEpoch) {stopRequestClock();clearFetching();button.disabled = false;}}
     });
-    document.addEventListener('visibilitychange', () => {if (secret) tick();});
-    window.addEventListener('pageshow', () => {if (secret) tick();});
+    document.addEventListener('visibilitychange', () => {if (secret) tick();if (requestClockRunning) renderElapsed();});
+    window.addEventListener('pageshow', () => {if (secret) tick();if (requestClockRunning) renderElapsed();});
     window.addEventListener('pagehide', () => expire({clearDuration:true}));
