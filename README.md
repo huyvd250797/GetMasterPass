@@ -1,8 +1,13 @@
-# Master Password — v2.5.0
+# Master Password — v2.5.1
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.3.x/2.4.x cần chạy `database/migrate-v2.5.0.sql` trên Neon trước khi deploy. Từ 2.2.0 cần chạy cả migrate-v2.3.0.sql rồi migrate-v2.5.0.sql; không tạo lại tài khoản.
 
-## Thay đổi 2.5.0
+## Thay đổi 2.5.1
+
+- Cảnh báo master được rút gọn thành hai dòng đầy đủ: “Mật khẩu master do Mr. HuyVo quản lý.” / “Vui lòng chỉ sử dụng đúng mục đích.” Nới chiều ngang của khung trong thẻ master, giảm padding/chiều cao, chọn cỡ chữ theo màn hình. Giữ màu cam, không dùng dấu … hoặc cắt mất nội dung.
+- Chỉ sửa trình bày và câu cảnh báo. Từ 2.5.0 đã hoạt động không cần migration hoặc biến môi trường mới. Phiên bản và ZIP tăng lên 2.5.1.
+
+## Thay đổi 2.5.0 (lịch sử)
 
 - Khi nhận master hợp lệ, hiển thị dòng màu cam ngay trên countdown: **“Mật khẩu master do Mr. HuyVo quản lý. Vui lòng sử dụng đúng mục đích và trong phạm vi được cấp quyền.”** Dòng nằm trong vùng mã còn hiệu lực, ẩn khi chưa có mã, lỗi, hết hạn hoặc đăng xuất. Đây là thông điệp hướng dẫn sử dụng; quyền truy cập vẫn do server kiểm tra.
 - Admin vào **Tài khoản → Thời hạn phiên người dùng**, nhập số giờ nguyên **1–168**, rồi Lưu thời hạn. Mặc định **8 giờ**, lưu dùng chung trên Neon và ghi audit SESSION_POLICY_UPDATE. API chặn user, yêu cầu phiên admin/CSRF/Origin/phiên bản và giới hạn tốc độ như các thao tác quản trị hiện có.
