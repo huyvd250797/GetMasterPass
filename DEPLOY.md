@@ -1,13 +1,13 @@
-# Deploy Master Password v2.5.1
+# Deploy Master Password v2.5.2
 
-## Nâng cấp từ 2.5.0
+## Nâng cấp từ 2.5.0/2.5.1
 
-Thay source bằng **Master_Password_Web_v2.5.1.zip**, commit/push để Vercel build bản mới. Nếu 2.5.0 đã chạy được, không cần chạy SQL hoặc thêm biến môi trường. Footer/API phải cùng phiên bản 2.5.1. Cảnh báo màu cam có hai dòng gọn hơn, phần quản lý phiên giữ như 2.5.0.
+Thay source bằng **Master_Password_Web_v2.5.2.zip**, commit/push để Vercel build bản mới. Nếu 2.5.0 đã chạy được, không cần chạy SQL hoặc thêm biến môi trường. Footer/API phải cùng phiên bản 2.5.2. Bản này thêm Hiện/Ẩn mật khẩu ở login, Copy lại có icon, Thử lại khi Get lỗi với Chi tiết lỗi có thể mở và tìm nhanh họ tên/username ở danh sách tài khoản admin. Phần quản lý phiên giữ như 2.5.0.
 
 ## Nâng cấp từ 2.3.x hoặc 2.4.x
 
-1. Giải nén **Master_Password_Web_v2.5.1.zip**. Trong Neon SQL Editor của DATABASE_URL hiện tại, chạy toàn bộ **database/migrate-v2.5.0.sql trước khi deploy**. File chỉ thêm bảng cấu hình thời hạn phiên và mặc định 8 giờ; không xóa tài khoản/phiên/lịch sử, chạy lại không ghi đè thiết lập.
-2. Thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần thêm biến môi trường. Kiểm tra footer và /api/version cùng là **2.5.1**. Nếu bỏ qua migration, đăng nhập có thể báo DATABASE_NOT_READY vì chưa có mp_app_settings.
+1. Giải nén **Master_Password_Web_v2.5.2.zip**. Trong Neon SQL Editor của DATABASE_URL hiện tại, chạy toàn bộ **database/migrate-v2.5.0.sql trước khi deploy**. File chỉ thêm bảng cấu hình thời hạn phiên và mặc định 8 giờ; không xóa tài khoản/phiên/lịch sử, chạy lại không ghi đè thiết lập.
+2. Thay source trong repo rồi commit/push để Vercel deploy commit mới. Không cần thêm biến môi trường. Kiểm tra footer và /api/version cùng là **2.5.2**. Nếu bỏ qua migration, đăng nhập có thể báo DATABASE_NOT_READY vì chưa có mp_app_settings.
 3. Admin đăng nhập, vào **Tài khoản → Thời hạn phiên người dùng**, chọn số giờ nguyên 1–168 và Lưu thời hạn. Thiết lập áp dụng chung từ lần đăng nhập tiếp theo của user. Phiên hiện có giữ expiry đã cấp; phiên admin vẫn 8 giờ. Đăng nhập thử bằng user mới để xác nhận thời hạn.
 4. Khi lấy mã thành công, dòng màu cam của Mr. HuyVo xuất hiện phía trên countdown. Hết hiệu lực/đăng xuất thì vùng này ẩn. Đồng hồ Get vẫn chỉ hiển thị số giây nguyên theo thời gian thực.
 
@@ -17,7 +17,7 @@ Giữ tối ưu Chromium/Neon của 2.4.2, 2 SQL khi cache hit và 4 khi đọc 
 
 ## Cài mới hoặc nâng cấp từ 2.2.0
 
-1. Giải nén **Master_Password_Web_v2.5.1.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` rồi `database/migrate-v2.5.0.sql` **trước khi deploy**. Hai migration thêm bảng cache và cấu hình phiên, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
+1. Giải nén **Master_Password_Web_v2.5.2.zip**. Trong **Neon SQL Editor**, chọn đúng database của DATABASE_URL hiện tại và chạy toàn bộ `database/migrate-v2.3.0.sql` rồi `database/migrate-v2.5.0.sql` **trước khi deploy**. Hai migration thêm bảng cache và cấu hình phiên, không xóa tài khoản/lịch sử. Nếu chưa có database, dùng toàn bộ `database/schema.sql` thay vì migration.
 2. Giữ nguyên sáu biến server đang có: HRM_USERNAME, HRM_PASSWORD, ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET, DATABASE_URL. Không cần biến bắt buộc mới; cache dùng chung mặc định bật.
 3. Thay source trong checkout GitHub đang nối Vercel. ZIP có package.json ở gốc. Không đưa .env.local hoặc secret vào Git.
 
@@ -27,7 +27,7 @@ npm test
 npm run build
 git status
 git add .
-git commit -m "Compact two-line master notice v2.5.1"
+git commit -m "Small login, copy, retry and account search UX v2.5.2"
 git push
 ```
 
@@ -61,7 +61,9 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 
 ## Kiểm tra chức năng
 
-- Chưa đăng nhập: form login; Get không có phiên trả 401 và không đọc HRM.
+- Chưa đăng nhập: form login; Get không có phiên trả 401 và không đọc HRM. Hiện/Ẩn giữ nguyên mật khẩu đang nhập và không gửi form; sau khi login thành công/thất bại hoặc logout phải ẩn và xóa mật khẩu.
+- Get lỗi: thông báo dễ hiểu, nút Thử lại hoạt động; Chi tiết lỗi mặc định đóng. Mở để xem mã lỗi/bước/lý do/ID nếu server cung cấp hợp lệ. Bấm lại chỉ gửi một lượt Get; không hiển thị lỗi cũ khi đang thử lại hoặc sau logout.
+- Tài khoản admin: nhập tên hoặc username, thử chữ không dấu/hoa thường; số kết quả cập nhật không gọi thêm API. Khóa/đặt lại mật khẩu vẫn tác động đúng dòng sau khi lọc; logout xóa từ khóa/bảng.
 - Admin: tạo/khóa/mở/đặt lại mật khẩu user; xem lịch sử. Không có tab đổi mật khẩu của admin; gọi action change_password bằng phiên admin cũng trả 403.
 - User: Get tự copy và hiện toast; Copy lại hiện toast mới, giữ countdown và không tạo lượt Get mới. Hết hạn/đăng xuất xóa mã khỏi bộ nhớ UI.
 - Không có dòng kết nối HRM hoặc câu “Lấy mật khẩu và copy ngay vào clipboard.” Get đang chạy có nút “Đang lấy…”, progress % ước tính và đồng hồ “Đã chờ X giây”. Sau khi nhận mã có thời gian Get; Copy lại giữ nguyên số đo, countdown và không gọi Get mới.
@@ -85,7 +87,7 @@ Có thể chạy `npm run db:setup` với .env.local thay SQL Editor; script t�
 2. Mỗi nhóm cần vài lần đo để thấy cả cold start và instance đã hoạt động. Mốc 10 giây là mục tiêu, chưa có dữ liệu production để bảo đảm. Thời gian UI gồm click → nhận/kiểm tra mã; không bao gồm cấp quyền clipboard. processingMs trong log là thời gian server, có thể thấp hơn UI do mạng/cold start.
 3. Để lại mặc định các lớp cache và browser reuse; kiểm tra Function cùng/gần region Neon. Source không tự đổi vùng hoặc tăng cấu hình trả phí. Xem thiết lập Fluid compute/CPU trong Vercel nếu cold start còn chiếm phần lớn thời gian: https://vercel.com/docs/fluid-compute và https://vercel.com/docs/functions/configuring-functions/memory.
 4. Nếu vượt 10 giây, gửi thời gian UI và một dòng log master_request_completed chỉ có source/readerMs/processingMs/version/requestId để phân tích. Không gửi master, mật khẩu HRM, DATABASE_URL hoặc SESSION_SECRET.
-5. Bản này đã qua 126 kiểm thử và build trên Node 24; Vercel target Node 22.x. Chưa chạy HRM/Neon production end-to-end hoặc kiểm tra giao diện render bằng browser thật.
+5. Bản này đã qua 132 kiểm thử và build trên Node 24; Vercel target Node 22.x. Chưa chạy HRM/Neon production end-to-end hoặc kiểm tra giao diện render bằng browser thật.
 
 Browser được giữ tối đa 10 phút không sử dụng và tối đa 30 phút từ khi khởi động; mỗi Get dùng trang mới và đóng trang. Instance mới/mất kết nối/lỗi/đổi credential sẽ mở browser mới. HRM hiện form đăng nhập thì đăng nhập lại bình thường. Cookies không được xuất vào Neon/log/API. Nếu thấy RAM tăng hoặc HRM không tương thích với phiên browser giữ lại, đặt `HRM_BROWSER_REUSE=0` và deploy lại. Không có đảm bảo instance/browser luôn được giữ giữa các Get.
 
@@ -106,6 +108,6 @@ Cache hết hạn bị từ chối nhưng ciphertext có thể còn trong bảng
 | HISTORY_NOT_DELETABLE | Dòng đang xử lý hoặc đã xóa; tải lại lịch sử. |
 | RATE_LIMITED | Login: 8/15 phút mỗi username, 60/phút toàn app; Get: ít nhất 10 giây/lần và một lượt đang chạy; đổi mật khẩu: 5/15 phút mỗi user; xóa lịch sử: 20/phút. |
 | TRY_AGAIN | Đang chờ instance khác đọc HRM hoặc lease quá lâu; thử lại sau vài giây. |
-| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.5.1. |
+| VERSION_MISMATCH | Tải lại trang/mở đúng deployment; kiểm tra footer/API cùng 2.5.2. |
 
 Nếu HRM lỗi, chỉ gửi error/stage/reason/requestId. Các deployment cũ vẫn có source/config cũ; cần quản lý các URL cũ riêng. Bản này chưa deploy hoặc kiểm tra Neon/HRM production thực tế.

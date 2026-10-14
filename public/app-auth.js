@@ -4,6 +4,17 @@
  let authEpoch=0,offset=0,total=0,selectedTab='master',resetId='',historyLoad=0,usersLoad=0,deleteId='';
  let sessionClockTimer,sessionLifetime=0,sessionStarted=0,sessionWallStarted=0,sessionElapsed=0;
  let sessionExpiredLocally=false;
+ let userRows=[];
+ const searchText=value=>String(value??'').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[đĐ]/g,'d').toLocaleLowerCase('vi-VN').replace(/\s+/g,' ').trim();
+ function hideLoginPassword(){
+  $('login-password').type='password';$('login-password-toggle').textContent='Hiện';
+  $('login-password-toggle').setAttribute('aria-pressed','false');$('login-password-toggle').setAttribute('aria-label','Hiện mật khẩu');
+ }
+ $('login-password-toggle').addEventListener('click',()=>{
+  const visible=$('login-password').type==='password';$('login-password').type=visible?'text':'password';
+  $('login-password-toggle').textContent=visible?'Ẩn':'Hiện';$('login-password-toggle').setAttribute('aria-pressed',String(visible));
+  $('login-password-toggle').setAttribute('aria-label',visible?'Ẩn mật khẩu':'Hiện mật khẩu');
+ });
  const errors={UNAUTHENTICATED:'Vui lòng đăng nhập lại.',INVALID_CREDENTIALS:'Sai username, mật khẩu hoặc tài khoản đã bị khóa.',
   FORBIDDEN:'Tài khoản không có quyền thực hiện thao tác.',AUTH_NOT_CONFIGURED:'Chưa cấu hình đăng nhập. Liên hệ quản trị viên.',
   DATABASE_NOT_CONFIGURED:'Chưa cấu hình dữ liệu. Liên hệ quản trị viên.',DATABASE_NOT_READY:'Chưa khởi tạo dữ liệu. Liên hệ quản trị viên.',
@@ -33,6 +44,7 @@
   return errors[e.message]||'Không hoàn tất được yêu cầu. Vui lòng thử lại.';
  }
  function requireLogin({expired=false}={}){
+  hideLoginPassword();$('login-password').value='';userRows=[];$('users-search').value='';$('users-search-count').textContent='';
   sessionExpiredLocally=expired;
   clearInterval(sessionClockTimer);sessionClockTimer=undefined;sessionLifetime=0;sessionElapsed=0;
   authEpoch++;historyLoad++;usersLoad++;window.MasterSession=null;window.clearMaster?.();$('workspace').hidden=true;$('login-panel').hidden=false;
@@ -77,6 +89,7 @@
   if(window.MasterSession?.csrfToken!==d.csrfToken)window.MasterSession={user:d.user,csrfToken:d.csrfToken};
   if(!armSessionClock(d.sessionRemainingMs,sameSession))return;
   $('login-panel').hidden=true;$('workspace').hidden=false;$('login-password').value='';
+  hideLoginPassword();
   $('who').textContent=`${d.user.fullName} · ${d.user.username}${d.user.role==='admin'?' · Admin':''}`;
   $('tab-users').hidden=d.user.role!=='admin';$('actor-filter').hidden=d.user.role!=='admin';
   $('tab-history').hidden=d.user.role!=='admin';$('tab-password').hidden=d.user.role!=='user';
@@ -92,11 +105,21 @@
  function row(cells){const tr=document.createElement('tr');for(const text of cells){const td=document.createElement('td');td.textContent=text??'—';tr.append(td);}return tr;}
  const time=s=>s?new Date(s).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false}):'—';
  function empty(tbody,text,span){const tr=row([text]);tr.firstChild.colSpan=span;tr.firstChild.className='empty';tbody.append(tr);}
+ function filterUsers(){
+  if(window.MasterSession?.user.role!=='admin')return;
+  const query=searchText($('users-search').value);let visible=0;
+  for(const r of userRows){r.element.hidden=!!query&&!r.search.includes(query);if(!r.element.hidden)visible++;}
+  const emptyRow=$('users-search-empty');
+  if(emptyRow){emptyRow.hidden=visible>0;emptyRow.firstChild.textContent=userRows.length?'Không tìm thấy tài khoản phù hợp.':'Chưa có tài khoản. Tạo tài khoản đầu tiên ở bên trên.';}
+  $('users-search-count').textContent=`Hiển thị ${visible}/${userRows.length} tài khoản`;
+ }
+ $('users-search').addEventListener('input',filterUsers);
  async function loadUsers(){
   const sequence=++usersLoad,session=window.MasterSession;const d=await api('/api/admin');
   if(sequence!==usersLoad||window.MasterSession!==session)return;
   $('user-session-hours').value=String(d.settings.userSessionHours);
   $('users-rows').replaceChildren();const filter=$('history-actor'),previous=filter.value;
+  userRows=[];
   filter.replaceChildren();for(const [value,label] of [['','Tất cả'],['admin','Quản trị viên'],...d.users.map(u=>[u.id,`${u.full_name} (${u.username})`])]){
    const opt=document.createElement('option');opt.value=value;opt.textContent=label;filter.append(opt);
   }filter.value=previous;
@@ -108,8 +131,9 @@
    const reset=document.createElement('button');reset.type='button';reset.className='secondary';reset.textContent='Đặt lại mật khẩu';
    reset.addEventListener('click',()=>{resetId=u.id;$('reset-target').textContent=`${u.full_name} · ${u.username}`;$('reset-password').value='';show('reset-status','');$('reset-dialog').showModal();});
    td.append(toggle,reset);tr.append(td);$('users-rows').append(tr);
+   userRows.push({element:tr,search:searchText(`${u.full_name} ${u.username}`)});
   }
-  if(!d.users.length)empty($('users-rows'),'Chưa có tài khoản. Tạo tài khoản đầu tiên ở bên trên.',5);
+  const emptyRow=row(['']);emptyRow.id='users-search-empty';emptyRow.firstChild.colSpan=5;emptyRow.firstChild.className='empty';$('users-rows').append(emptyRow);filterUsers();
  }
  async function loadHistory(){
   const sequence=++historyLoad,session=window.MasterSession;
@@ -143,7 +167,7 @@
  $('login-form').addEventListener('submit',e=>{e.preventDefault();busy($('login-submit'),async()=>{
   const username=$('login-username').value,password=$('login-password').value;
   try{const d=await api('/api/auth',{action:'login',username,password});enter(d);show('login-status','Đăng nhập bằng tài khoản được admin cấp.');await tab('master');}
-  finally{$('login-password').value='';}
+  finally{$('login-password').value='';hideLoginPassword();}
  },'login-status');});
  $('logout').addEventListener('click',()=>busy($('logout'),async()=>{await api('/api/auth',{action:'logout'});requireLogin();show('login-status','Đã đăng xuất.');}));
  $('session-settings-form').addEventListener('submit',e=>{e.preventDefault();busy($('session-settings-save'),async()=>{

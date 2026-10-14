@@ -31,7 +31,7 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false,
   if(path==='/api/admin'){
    if(body?.action==='set_session_hours'){assert.equal(current?.role,'admin');userSessionHours=body.hours;return response(200,{ok:true,settings:{userSessionHours}});}
    assert.equal(current?.role,'admin');if(body?.action==='create')users.push({id:'test-id',username:body.username,full_name:body.fullName,active:true,get_count:0});
-   if(body?.action==='toggle')users[0].active=body.active;
+   if(body?.action==='toggle')users.find(u=>u.id===body.id).active=body.active;
    return response(200,body?{ok:true}:{users,settings:{userSessionHours}});
   }
   if(path.startsWith('/api/history')){if(body){assert.equal(current.role,'admin');const count=body.action==='delete_all'?history.length:1;history.splice(0,body.action==='delete_all'?history.length:1);return response(200,{ok:true,deleted:count});}return response(200,{items:history,stats:{total:history.length,issued:history.length,failed:0},offset:0,pageSize:50});}
@@ -279,5 +279,73 @@ test('failure clears the progress timer and a retry starts from a fresh percenta
   assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get-progress-step').textContent,'0%');await h.advance(1000);assert.equal(h.$('get-progress-step').textContent,'0%');
   await h.click('get');assert.equal(h.$('get-progress-step').textContent,'3%');await h.click('logout');await h.advance(1000);
   assert.equal(h.$('get-progress').hidden,true);assert.equal(h.$('get-progress-step').textContent,'0%');await h.finish();
+ }finally{h.dom.window.close();}
+});
+
+test('login password toggle keeps input and submits nothing; success/logout reset visibility',async()=>{
+ const h=await setup();try{
+  h.$('login-password').value='TEST-ONLY-PASSWORD';const n=h.requests.length;
+  await h.click('login-password-toggle');assert.equal(h.$('login-password').type,'text');assert.equal(h.$('login-password').value,'TEST-ONLY-PASSWORD');
+  assert.equal(h.$('login-password-toggle').textContent,'Ẩn');assert.equal(h.$('login-password-toggle').getAttribute('aria-pressed'),'true');assert.equal(h.requests.length,n);
+  await h.click('login-password-toggle');assert.equal(h.$('login-password').type,'password');assert.equal(h.requests.length,n);
+  await h.click('login-password-toggle');await h.login('tester');assert.equal(h.$('login-password').type,'password');assert.equal(h.$('login-password').value,'');
+  await h.click('logout');assert.equal(h.$('login-password-toggle').getAttribute('aria-pressed'),'false');assert.equal(h.$('login-password-toggle').textContent,'Hiện');
+ }finally{h.dom.window.close();}
+});
+test('failed login clears the visible password and returns toggle to hidden state',async()=>{
+ const h=await setup({configIssues:['ADMIN_PASSWORD_TOO_SHORT']});try{
+  await h.click('login-password-toggle');await h.login('tester');
+  assert.equal(h.$('login-password').type,'password');assert.equal(h.$('login-password').value,'');assert.equal(h.$('login-password-toggle').textContent,'Hiện');
+  assert.equal(h.$('workspace').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('short Copy label and decorative icon preserve local copy without another Get',async()=>{
+ const h=await setup();try{
+  await h.login('tester');await h.click('get');const n=h.requests.length;
+  assert.equal(h.$('copy').textContent.trim(),'Copy lại');assert.equal(h.$('copy').querySelector('svg').getAttribute('aria-hidden'),'true');
+  await h.click('copy');assert.equal(h.requests.length,n);assert.deepEqual(h.copies,['TEST-MASTER','TEST-MASTER']);
+ }finally{h.dom.window.close();}
+});
+test('Get error shows a retry button and collapsed safe diagnostics; retry is single-flight and clears old errors',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');
+  const requestId='00000000-0000-4000-8000-000000000000';
+  await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'HRM_UI_CHANGED',stage:'master_menu_visible',reason:'TIMEOUT',requestId}});await h.finish();
+  assert.equal(h.$('get').textContent,'Thử lại');assert.equal(h.$('get').disabled,false);assert.equal(h.copies.length,0);
+  assert.doesNotMatch(h.$('status').textContent,/HRM_UI_CHANGED|master_menu_visible|TIMEOUT|00000000/);
+  assert.equal(h.$('get-error-details').hidden,false);assert.equal(h.$('get-error-details').open,false);
+  h.$('get-error-details').open=true;assert.match(h.$('get-error-code').textContent,/Mã lỗi: HRM_UI_CHANGED/);assert.match(h.$('get-error-code').textContent,/master_menu_visible/);assert.ok(h.$('get-error-code').textContent.includes(requestId));
+  const before=h.requests.filter(r=>r.path==='/api/master-password').length;
+  await h.click('get');await h.click('get');assert.equal(h.requests.filter(r=>r.path==='/api/master-password').length,before+1);
+  assert.equal(h.$('get-error-details').hidden,true);assert.equal(h.$('get-error-details').open,false);assert.equal(h.$('get-error-code').textContent,'');
+  await h.push({type:'result',status:200,data:{version:APP_VERSION,password:'TEST-RETRY',remainingMs:90000,processingMs:0}});await h.finish();
+  assert.deepEqual(h.copies,['TEST-RETRY']);assert.equal(h.$('get-error-details').hidden,true);
+  await h.click('logout');assert.equal(h.$('get-error-code').textContent,'');
+ }finally{h.dom.window.close();}
+});
+test('unknown Get diagnostics cannot inject markup or reveal arbitrary response strings',async()=>{
+ const h=await setup({streamMaster:true});try{
+  await h.login('tester');await h.click('get');
+  await h.push({type:'result',status:502,data:{version:APP_VERSION,error:'PRIVATE-SERVER-PASSWORD',stage:'<img src=x onerror=alert(1)>',reason:'PRIVATE SERVER SECRET',requestId:'PRIVATE',password:'PRIVATE-MASTER'}});await h.finish();
+  assert.equal(h.$('get-error-code').textContent,'Mã lỗi: REQUEST_FAILED');assert.doesNotMatch(h.$('status').textContent,/PRIVATE|<img/);
+  assert.equal(h.$('get-error-details').querySelector('img'),null);assert.equal(h.copies.length,0);
+  await h.click('logout');assert.equal(h.$('get-error-details').hidden,true);
+ }finally{h.dom.window.close();}
+});
+test('admin quick search matches accented names/usernames locally and preserves correct row actions',async()=>{
+ const h=await setup();try{
+  h.users.push({id:'one',username:'huy.vo',full_name:'Võ Đức Huy',active:true,get_count:1},{id:'two',username:'sao.dao',full_name:'Đào Thị Sao',active:true,get_count:2},{id:'three',username:'tran',full_name:'Trần An',active:true,get_count:3});
+  await h.login('admin');await h.click('tab-users');const n=h.requests.length;
+  const search=async text=>{h.$('users-search').value=text;h.$('users-search').dispatchEvent(new h.w.Event('input',{bubbles:true}));await flush();};
+  const visible=()=>[...h.$('users-rows').querySelectorAll('tr')].filter(r=>!r.hidden&&r.id!=='users-search-empty');
+  await search('vo duc');assert.equal(visible().length,1);assert.match(visible()[0].textContent,/huy.vo/);
+  await search('  SAO.DAO ');assert.equal(visible().length,1);assert.match(visible()[0].textContent,/Đào Thị Sao/);
+  assert.equal(h.$('users-search-count').textContent,'Hiển thị 1/3 tài khoản');assert.equal(h.requests.length,n);
+  visible()[0].querySelector('button').click();await flush();assert.ok(h.requests.some(r=>r.body?.action==='toggle'&&r.body.id==='two'&&r.body.active===false));
+  assert.equal(h.$('users-search').value,'  SAO.DAO ');assert.match(visible()[0].textContent,/Đã khóa/);
+  await search('zzzz');assert.equal(visible().length,0);assert.equal(h.$('users-search-empty').hidden,false);assert.match(h.$('users-search-empty').textContent,/Không tìm thấy/);
+  await search('');assert.equal(visible().length,3);assert.equal(h.$('users-search-empty').hidden,true);
+  await h.click('logout');assert.equal(h.$('users-search').value,'');assert.equal(h.$('users-search-count').textContent,'');assert.equal(h.$('users-rows').textContent,'');
+  await h.login('tester');const userBefore=h.requests.length;await search('huy');assert.equal(h.requests.length,userBefore);assert.equal(h.$('users-panel').hidden,true);assert.equal(h.$('users-search-count').textContent,'');
  }finally{h.dom.window.close();}
 });

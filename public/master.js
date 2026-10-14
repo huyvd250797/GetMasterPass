@@ -17,6 +17,13 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const getDurationValue = document.getElementById('get-duration-value');
     const getDurationLabel = document.getElementById('get-duration-label');
     const masterState = document.getElementById('master-state');
+    const getErrorDetails = document.getElementById('get-error-details');
+    const getErrorCode = document.getElementById('get-error-code');
+    const setGetLabel = label => {button.textContent=label;button.setAttribute('aria-label',label);};
+    function clearGetError(){
+      if(getErrorDetails){getErrorDetails.hidden=true;getErrorDetails.open=false;}
+      if(getErrorCode)getErrorCode.textContent='';
+    }
     let requestStarted = 0, requestWallStarted = 0, requestMilliseconds = 0, requestClockRunning = false, requestClockTimer;
     const formatDuration = ms => String(Math.floor(Math.max(0,ms)/1000));
     function elapsedRequest() {
@@ -87,11 +94,12 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
     const remaining = () => Math.max(0, lifetime - Math.max(Date.now() - wallStart, performance.now() - monotonicStart));
     const message = (text, type = '') => {status.textContent = text; status.className = type;};
     function expire({clearDuration=false}={}) {
+      clearGetError();
       getEpoch++;clearFetching();
       stopRequestClock();
       masterEpoch++; clearInterval(timer); secret = ''; manual.value = ''; manual.hidden = true; active.hidden = true;
       copyButton.hidden = true; copyButton.disabled = false;
-      button.hidden = false; button.disabled = false; button.textContent = 'Get master password';
+      button.hidden = false; button.disabled = false; setGetLabel('Get master password');
       message('');
       if (masterState) {masterState.textContent = 'Sẵn sàng';masterState.dataset.state = 'ready';}
       if (clearDuration && getDuration) getDuration.hidden = true;
@@ -135,10 +143,10 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
       if (!session?.user) {message('Vui lòng đăng nhập trước khi lấy master.', 'error'); return;}
       if (secret && remaining() >= 1000) {button.disabled = true; await copy(); button.disabled = false; return;}
       if (button.disabled) return;
-      const requestEpoch = ++getEpoch;clearFetching();startRequestClock();fetching(0);
+      const requestEpoch = ++getEpoch;clearGetError();clearFetching();startRequestClock();fetching(0);
       if (getDuration) getDuration.hidden = true;
       if (masterState) {masterState.textContent = 'Đang xử lý';masterState.dataset.state = 'loading';}
-      button.disabled = true; button.textContent = 'Đang lấy…'; message('');
+      button.disabled = true; setGetLabel('Đang lấy…'); message('');
       let start = performance.now();
       try {
         // Server validates X-App-Version before HRM work; no extra preflight round-trip.
@@ -182,7 +190,7 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
           LOGIN_FAILED:'Không đăng nhập được HRM. Kiểm tra tài khoản trên Vercel.',
           AUTH_BLOCKED:'HRM đang yêu cầu xác minh hoặc chặn truy cập tự động.',
           LOGIN_REQUIRED:'HRM yêu cầu phương thức đăng nhập khác.',
-          HRM_UI_CHANGED:'Chưa thao tác được giao diện HRM. Kiểm tra bước lỗi bên dưới.',
+          HRM_UI_CHANGED:'Chưa lấy được mật khẩu. Vui lòng thử lại hoặc liên hệ quản trị viên.',
           COPY_FAILED:'HRM chưa cung cấp được mã để copy.',
           HRM_TIMEOUT:'HRM phản hồi quá lâu. Vui lòng thử lại sau.',
           BROWSER_START_FAILED:'Chromium không khởi chạy được trên server.',
@@ -196,19 +204,23 @@ const APP_VERSION = document.getElementById('app-version').textContent.trim().re
           INVALID_CONFIGURATION:'Cấu hình API HRM chưa hợp lệ.',
           FORBIDDEN:'Kết nối không được cấp quyền.',
           TRY_AGAIN:'Vui lòng đợi vài giây rồi thử lại.',
+          GET_TIMEOUT:'Yêu cầu đã chờ quá lâu. Vui lòng thử lại.',
+          REQUEST_FAILED:'Không lấy được mật khẩu. Vui lòng thử lại.',
           INVALID_RESPONSE:'HRM chưa trả về mã và thời gian hiệu lực hợp lệ.'
         };
         const d=error.diagnostic;
+        const code=Object.hasOwn(errors,error.message)?error.message:['TimeoutError','AbortError'].includes(error.name)?'GET_TIMEOUT':'REQUEST_FAILED';
         // Display only diagnostic labels, never arbitrary server text.
         const details=d && /^[a-z_]{1,40}$/.test(d.stage) && /^[A-Z0-9_]{1,40}$/.test(d.reason) &&
-          /^[a-f0-9-]{36}$/.test(d.requestId) ? ` [${error.message}: ${d.stage}/${d.reason}; ID ${d.requestId}]` : '';
-        const description=error.message==='AUTH_NOT_CONFIGURED'&&window.MasterAccess?.errorText
-          ?window.MasterAccess.errorText(error):errors[error.message] || 'Không lấy được mật khẩu. Vui lòng thử lại.';
-        message(description+details, 'error');
+          /^[a-f0-9-]{36}$/.test(d.requestId) ? `\nBước: ${d.stage}\nLý do: ${d.reason}\nMã yêu cầu: ${d.requestId}` : '';
+        const config=code==='AUTH_NOT_CONFIGURED'&&window.MasterAccess?.errorText?'\n'+window.MasterAccess.errorText(error):'';
+        if(getErrorCode)getErrorCode.textContent=`Mã lỗi: ${code}${details}${config}`;
+        if(getErrorDetails){getErrorDetails.open=false;getErrorDetails.hidden=false;}
+        message(errors[code], 'error');
         stopRequestClock();renderElapsed();
         if (getDuration) {getDurationLabel.textContent='Thời gian yêu cầu chưa thành công';getDurationValue.textContent=`${formatDuration(elapsedRequest())} giây`;getDuration.hidden=false;}
         if (masterState) {masterState.textContent = 'Cần thử lại';masterState.dataset.state = 'error';}
-        button.textContent = 'Get master password';
+        setGetLabel('Thử lại');
       } finally {if (getEpoch === requestEpoch) {stopRequestClock();clearFetching();button.disabled = false;}}
     });
     document.addEventListener('visibilitychange', () => {if (secret) tick();if (requestClockRunning) renderElapsed();});

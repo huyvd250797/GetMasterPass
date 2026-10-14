@@ -1,8 +1,17 @@
-# Master Password — v2.5.1
+# Master Password — v2.5.2
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.3.x/2.4.x cần chạy `database/migrate-v2.5.0.sql` trên Neon trước khi deploy. Từ 2.2.0 cần chạy cả migrate-v2.3.0.sql rồi migrate-v2.5.0.sql; không tạo lại tài khoản.
 
-## Thay đổi 2.5.1
+## Thay đổi 2.5.2
+
+- Form login có nút Hiện/Ẩn mật khẩu, type=button để không gửi form; giữ giá trị khi chuyển trạng thái. Trả về trạng thái ẩn và xóa giá trị khi kết thúc lần đăng nhập, đăng xuất hoặc hết phiên. Hỗ trợ nhãn và trạng thái cho trình đọc màn hình.
+- Nút Copy lại có nhãn ngắn và icon SVG trang trí. Chỉ copy mã đang còn hiệu lực, không Get mới, không thay đổi countdown hoặc số lần Get.
+- Get thất bại chuyển nút chính thành Thử lại; người dùng chủ động bấm để gửi một lượt Get mới qua luồng kiểm tra quyền/rate limit/audit hiện có. Khi đang chạy nút bị khóa, không tự retry hoặc polling thêm. Lỗi đọc mã không được báo thành công.
+- Mã lỗi, stage/reason và requestId nằm trong Chi tiết lỗi (details/summary), mặc định đóng. Thông báo chính giữ câu dễ hiểu. Chỉ đưa mã lỗi đã biết và các nhãn diagnostic có định dạng hợp lệ vào textContent; không hiển thị message/HTML tùy ý từ server. Lần thử mới, thành công hoặc đăng xuất xóa lỗi cũ. Hướng dẫn lỗi cấu hình vẫn có trong chi tiết; kiểm tra login giữ thông báo cấu hình hiện có.
+- Tab Tài khoản của admin có Tìm nhanh tài khoản theo họ tên/username, không phân biệt hoa/thường và dấu tiếng Việt; lọc ngay trên danh sách đã tải, không request API cho mỗi ký tự. Hiển thị số kết quả, trạng thái không tìm thấy, giữ thao tác Khóa/Đặt lại mật khẩu đúng tài khoản. Lọc tìm nhanh áp dụng trên tối đa 1.000 tài khoản mà endpoint hiện tại trả về. Logout xóa từ khóa, bảng và dữ liệu tìm kiếm.
+- Nâng cùng một bản 2.5.2, ZIP Master_Password_Web_v2.5.2.zip, giữ các tùy chỉnh khác trong source Boss gửi. Không đổi schema/API HRM, không thêm migration/biến môi trường từ 2.5.0/2.5.1. Cài từ 2.3.x/2.4.x vẫn cần migrate-v2.5.0.sql như trước.
+
+## Thay đổi 2.5.1 (lịch sử)
 
 - Cảnh báo master được rút gọn thành hai dòng đầy đủ: “Mật khẩu master do Mr. HuyVo quản lý.” / “Vui lòng chỉ sử dụng đúng mục đích.” Nới chiều ngang của khung trong thẻ master, giảm padding/chiều cao, chọn cỡ chữ theo màn hình. Giữ màu cam, không dùng dấu … hoặc cắt mất nội dung.
 - Chỉ sửa trình bày và câu cảnh báo. Từ 2.5.0 đã hoạt động không cần migration hoặc biến môi trường mới. Phiên bản và ZIP tăng lên 2.5.1.
@@ -125,7 +134,7 @@ npm run build
 npm run dev
 ```
 
-Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 126 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
+Mở http://127.0.0.1:8787. Dev chỉ nghe loopback, dùng cookie mp_session_dev; HTTPS dùng __Host-mp_session. Dev reader dùng Chrome local và RAM cache; Get trên Vercel dùng cả cache Neon. Bộ test không cần DB/HRM thật: dùng TEST-ONLY, PGlite PostgreSQL, clipboard/UI giả lập. Đã kiểm tra 132 test và build trên Node 24 của môi trường phát triển; Vercel cấu hình Node 22.x. Chưa deploy hoặc kiểm tra HRM/Neon production end-to-end bản này.
 
 ## Phiên bản và đóng gói
 
