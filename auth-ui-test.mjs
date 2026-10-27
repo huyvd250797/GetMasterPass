@@ -6,8 +6,10 @@ import {APP_VERSION} from './lib/app-version.mjs';
 const html=(await readFile(new URL('./public/index.html',import.meta.url),'utf8')).replaceAll('__APP_VERSION__',APP_VERSION);
 const scripts=await Promise.all(['notifications.js','master.js','app-auth.js'].map(f=>readFile(new URL('./public/'+f,import.meta.url),'utf8')));
 async function flush(){for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));}
-async function setup({deferredMaster=false,configIssues=null,streamMaster=false,sessionMs=28800000}={}){
+async function setup({deferredMaster=false,configIssues=null,streamMaster=false,sessionMs=28800000,savedLogin=null,failLogin=false,storageBlocked=false}={}){
  const dom=new JSDOM(html,{url:'https://master-test.invalid',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ if(savedLogin!==null)w.localStorage.setItem('master-password.remembered-login.v1',savedLogin);
+ if(storageBlocked)w.Storage.prototype.setItem=()=>{throw new Error('Storage blocked');};
  const requests=[],copies=[],users=[],history=[];let current=null,resolveMaster,streamController,sessionEnd=0,userSessionHours=8;
  const admin={id:'admin',username:'admin',fullName:'TEST ADMIN',role:'admin'},user={id:'user',username:'tester',fullName:'TEST USER',role:'user'};
  w.AbortSignal=AbortSignal;w.TextDecoder=TextDecoder;
@@ -23,6 +25,7 @@ async function setup({deferredMaster=false,configIssues=null,streamMaster=false,
   if(path==='/api/version')return response(200,{});
   if(path==='/api/auth'){
    if(configIssues)return response(503,{error:'AUTH_NOT_CONFIGURED',configIssues,privateValue:'PRIVATE-SERVER-VALUE'});
+   if(body?.action==='login'&&failLogin)return response(401,{error:'INVALID_CREDENTIALS'});
    if(body?.action==='login'){current=body.username==='admin'?admin:user;sessionEnd=wallNow+sessionMs;return response(200,{user:current,csrfToken:'TEST-CSRF-'+current.id,sessionRemainingMs:sessionMs,sessionExpiresAt:new Date(sessionEnd).toISOString()});}
    if(body?.action==='change_password'){assert.equal(current.role,'user');current=null;return response(200,{ok:true,loginRequired:true});}
    if(body?.action==='logout'){assert.equal(options.headers['X-CSRF-Token'],'TEST-CSRF-'+current.id);current=null;return response(200,{ok:true});}
@@ -347,5 +350,46 @@ test('admin quick search matches accented names/usernames locally and preserves 
   await search('');assert.equal(visible().length,3);assert.equal(h.$('users-search-empty').hidden,true);
   await h.click('logout');assert.equal(h.$('users-search').value,'');assert.equal(h.$('users-search-count').textContent,'');assert.equal(h.$('users-rows').textContent,'');
   await h.login('tester');const userBefore=h.requests.length;await search('huy');assert.equal(h.requests.length,userBefore);assert.equal(h.$('users-panel').hidden,true);assert.equal(h.$('users-search-count').textContent,'');
+ }finally{h.dom.window.close();}
+});
+
+const rememberKey='master-password.remembered-login.v1';
+test('remember opt-in persists only successful login and restores masked credentials after logout',async()=>{
+ const h=await setup();try{
+  assert.equal(h.$('login-remember').checked,false);
+  await h.login('tester');assert.equal(h.w.localStorage.getItem(rememberKey),null);await h.click('logout');
+  h.$('login-remember').checked=true;await h.login('tester');
+  assert.deepEqual(JSON.parse(h.w.localStorage.getItem(rememberKey)),{version:1,username:'tester',password:'TEST-ONLY-PASSWORD'});
+  assert.equal(h.$('login-password').value,'');await h.click('logout');
+  assert.equal(h.$('login-username').value,'tester');assert.equal(h.$('login-password').value,'TEST-ONLY-PASSWORD');assert.equal(h.$('login-password').type,'password');
+  h.$('login-remember').checked=false;h.$('login-remember').dispatchEvent(new h.w.Event('change'));
+  assert.equal(h.w.localStorage.getItem(rememberKey),null);
+ }finally{h.dom.window.close();}
+});
+test('failed authentication never saves attempted credentials or overwrites a saved successful account',async()=>{
+ for(const savedLogin of [null,JSON.stringify({version:1,username:'previous',password:'PREVIOUS-TEST-ONLY'})]){
+  const h=await setup({failLogin:true,savedLogin});try{
+   h.$('login-remember').checked=true;await h.login('wrong');assert.equal(h.w.localStorage.getItem(rememberKey),savedLogin);
+   assert.equal(h.$('workspace').hidden,true);
+  }finally{h.dom.window.close();}
+ }
+});
+test('saved credentials survive a page load without automatic authentication; malformed data is discarded',async()=>{
+ for(const savedLogin of [JSON.stringify({version:1,username:'tester',password:'SAVED-TEST-ONLY'}),'{broken']){
+  const h=await setup({savedLogin});try{
+   assert.equal(h.requests.some(r=>r.body?.action==='login'),false);
+   if(savedLogin==='{broken')assert.equal(h.w.localStorage.getItem(rememberKey),null);
+   else {assert.equal(h.$('login-password').value,'SAVED-TEST-ONLY');assert.equal(h.$('login-remember').checked,true);}
+  }finally{h.dom.window.close();}
+ }
+});
+test('blocked storage does not prevent login and password change clears remembered credentials',async()=>{
+ const blocked=await setup({storageBlocked:true});try{
+  blocked.$('login-remember').checked=true;await blocked.login('tester');assert.equal(blocked.$('workspace').hidden,false);
+ }finally{blocked.dom.window.close();}
+ const h=await setup();try{
+  h.$('login-remember').checked=true;await h.login('tester');await h.click('tab-password');
+  h.$('password-current').value='TEST-ONLY-PASSWORD';h.$('password-new').value='NEW-TEST-ONLY';h.$('password-confirm').value='NEW-TEST-ONLY';await h.submit('password-form');
+  assert.equal(h.w.localStorage.getItem(rememberKey),null);assert.equal(h.$('login-password').value,'');
  }finally{h.dom.window.close();}
 });

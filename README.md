@@ -1,8 +1,17 @@
-# Master Password — v2.5.2
+# Master Password — v2.5.3
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.3.x/2.4.x cần chạy `database/migrate-v2.5.0.sql` trên Neon trước khi deploy. Từ 2.2.0 cần chạy cả migrate-v2.3.0.sql rồi migrate-v2.5.0.sql; không tạo lại tài khoản.
 
-## Thay đổi 2.5.2
+## Thay đổi 2.5.3
+
+- Thêm tùy chọn Nhớ tài khoản và mật khẩu, mặc định tắt. Chỉ ghi khi API đăng nhập thành công và phiên hợp lệ; lần đăng nhập lỗi không ghi đè thông tin đã lưu.
+- Tự điền lần mở sau hoặc khi đăng xuất/hết phiên, mật khẩu luôn được che. Không tự đăng nhập, không kéo dài phiên và không bỏ kiểm tra quyền.
+- Bỏ chọn xóa ngay thông tin đã lưu. Đổi mật khẩu thành công xóa thông tin cũ; sau khi admin reset, đăng nhập thành công bằng mật khẩu mới sẽ cập nhật bản lưu.
+- Lưu một tài khoản gần nhất trong localStorage của trình duyệt, không đồng bộ giữa thiết bị. Đây là dữ liệu có thể đọc được bởi mã cùng origin hoặc người truy cập hồ sơ trình duyệt; chỉ bật trên thiết bị cá nhân. Xóa dữ liệu trang cũng xóa thông tin nhớ. Không lưu master password, không đưa thông tin vào log hoặc gửi thêm API.
+- Trình duyệt chặn lưu trữ vẫn đăng nhập bình thường. Không đổi DB hoặc biến môi trường từ 2.5.0–2.5.2.
+- Source ZIP: Master_Password_Web_v2.5.3.zip. Cài/chạy/build/deploy theo hướng dẫn bên dưới.
+
+## Thay đổi 2.5.2 (lịch sử)
 
 - Form login có nút Hiện/Ẩn mật khẩu, type=button để không gửi form; giữ giá trị khi chuyển trạng thái. Trả về trạng thái ẩn và xóa giá trị khi kết thúc lần đăng nhập, đăng xuất hoặc hết phiên. Hỗ trợ nhãn và trạng thái cho trình đọc màn hình.
 - Nút Copy lại có nhãn ngắn và icon SVG trang trí. Chỉ copy mã đang còn hiệu lực, không Get mới, không thay đổi countdown hoặc số lần Get.

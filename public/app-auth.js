@@ -5,6 +5,22 @@
  let sessionClockTimer,sessionLifetime=0,sessionStarted=0,sessionWallStarted=0,sessionElapsed=0;
  let sessionExpiredLocally=false;
  let userRows=[];
+ const rememberedLoginKey='master-password.remembered-login.v1';
+ function forgetLogin(){try{localStorage.removeItem(rememberedLoginKey);}catch{} }
+ function restoreLogin(){
+  try{
+   const raw=localStorage.getItem(rememberedLoginKey);if(!raw)return;
+   const saved=JSON.parse(raw);
+   if(saved?.version!==1||typeof saved.username!=='string'||!saved.username||saved.username.length>64||typeof saved.password!=='string'||!saved.password||saved.password.length>256){forgetLogin();return;}
+   $('login-username').value=saved.username;$('login-password').value=saved.password;$('login-remember').checked=true;
+  }catch{forgetLogin();}
+ }
+ function rememberLogin(username,password,enabled){
+  if(!enabled){forgetLogin();return;}
+  try{localStorage.setItem(rememberedLoginKey,JSON.stringify({version:1,username,password}));}
+  catch{window.MasterNotify?.error?.('Đăng nhập thành công nhưng trình duyệt không cho phép lưu thông tin.');}
+ }
+ $('login-remember').addEventListener('change',()=>{if(!$('login-remember').checked)forgetLogin();});
  const searchText=value=>String(value??'').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[đĐ]/g,'d').toLocaleLowerCase('vi-VN').replace(/\s+/g,' ').trim();
  function hideLoginPassword(){
   $('login-password').type='password';$('login-password-toggle').textContent='Hiện';
@@ -45,6 +61,7 @@
  }
  function requireLogin({expired=false}={}){
   hideLoginPassword();$('login-password').value='';userRows=[];$('users-search').value='';$('users-search-count').textContent='';
+  restoreLogin();
   sessionExpiredLocally=expired;
   clearInterval(sessionClockTimer);sessionClockTimer=undefined;sessionLifetime=0;sessionElapsed=0;
   authEpoch++;historyLoad++;usersLoad++;window.MasterSession=null;window.clearMaster?.();$('workspace').hidden=true;$('login-panel').hidden=false;
@@ -165,8 +182,8 @@
  }
  for(const name of ['master','history','users','password'])$('tab-'+name).addEventListener('click',()=>tab(name));
  $('login-form').addEventListener('submit',e=>{e.preventDefault();busy($('login-submit'),async()=>{
-  const username=$('login-username').value,password=$('login-password').value;
-  try{const d=await api('/api/auth',{action:'login',username,password});enter(d);show('login-status','Đăng nhập bằng tài khoản được admin cấp.');await tab('master');}
+  const username=$('login-username').value,password=$('login-password').value,remember=$('login-remember').checked;
+  try{const d=await api('/api/auth',{action:'login',username,password});enter(d);if(window.MasterSession)rememberLogin(username,password,remember&&$('login-remember').checked);show('login-status','Đăng nhập bằng tài khoản được admin cấp.');await tab('master');}
   finally{$('login-password').value='';hideLoginPassword();}
  },'login-status');});
  $('logout').addEventListener('click',()=>busy($('logout'),async()=>{await api('/api/auth',{action:'logout'});requireLogin();show('login-status','Đã đăng xuất.');}));
@@ -199,7 +216,7 @@
    const session=window.MasterSession;
    await api('/api/auth',{action:'change_password',currentPassword:$('password-current').value,newPassword:$('password-new').value});
    if(window.MasterSession!==session)return;
-   requireLogin();show('login-status','Vui lòng đăng nhập bằng mật khẩu mới.');window.MasterNotify?.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
+   forgetLogin();$('login-remember').checked=false;requireLogin();show('login-status','Vui lòng đăng nhập bằng mật khẩu mới.');window.MasterNotify?.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
   }finally{$('password-form').reset();}
  },'password-status');});
  function openDelete(id,text){

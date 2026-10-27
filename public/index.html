@@ -18,6 +18,8 @@
         <label for="login-username">Tên đăng nhập</label><input id="login-username" name="username" autocomplete="username" required maxlength="64">
         <label for="login-password">Mật khẩu</label>
         <div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="256"><button id="login-password-toggle" type="button" class="secondary" aria-controls="login-password" aria-pressed="false" aria-label="Hiện mật khẩu">Hiện</button></div>
+        <label class="remember-login"><input id="login-remember" type="checkbox" aria-describedby="login-remember-help"><span>Nhớ tài khoản và mật khẩu</span></label>
+        <p id="login-remember-help" class="remember-help">Chỉ lưu sau khi đăng nhập thành công trên trình duyệt này. Chỉ chọn trên thiết bị cá nhân.</p>
         <button id="login-submit" type="submit">Đăng nhập</button>
       </form>
       <p id="login-status" class="note" role="status">Đăng nhập bằng tài khoản được admin cấp.</p>
