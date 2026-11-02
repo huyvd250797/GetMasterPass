@@ -1,8 +1,17 @@
-# Master Password — v2.5.3
+# Master Password — v2.5.4
 
 App chạy trên Vercel, đăng nhập bằng tài khoản do admin cấp, lấy master từ HRM, tự copy và đếm thời gian còn hiệu lực. **Đọc DEPLOY.md trước khi nâng cấp.** Từ 2.3.x/2.4.x cần chạy `database/migrate-v2.5.0.sql` trên Neon trước khi deploy. Từ 2.2.0 cần chạy cả migrate-v2.3.0.sql rồi migrate-v2.5.0.sql; không tạo lại tài khoản.
 
-## Thay đổi 2.5.3
+## Thay đổi 2.5.4 — Configurable HRM URL
+
+- Địa chỉ cũ ghi cố định tại lib/hrm-browser.mjs. Nay đọc biến server HRM_URL qua lib/hrm-config.mjs; dùng chung cho điều hướng, kiểm tra origin, lọc tài nguyên và quyền clipboard.
+- Vercel → project app → Settings → Environment Variables: thêm HRM_URL = https://hrm.ascvn.com.vn/HeThong, chọn môi trường cần dùng, lưu và Redeploy. Khi đổi web: sửa HRM_URL, cập nhật HRM_USERNAME/HRM_PASSWORD nếu khác, rồi Redeploy. Không phải sửa source.
+- Local: sao chép .env.example thành .env.local rồi điền cấu hình thật. HRM_URL phải là URL HTTPS đầy đủ gồm đường dẫn; không chứa tài khoản, query hoặc fragment. Giá trị sai/rỗng sẽ bị từ chối bằng NOT_CONFIGURED, không truy cập URL dự phòng.
+- Nếu chưa khai báo HRM_URL, giữ địa chỉ cũ để tương thích. URL chỉ đọc trên server, không dùng tiền tố PUBLIC/NEXT_PUBLIC. Không nhận URL từ người dùng trên giao diện.
+- Cache RAM, cache Neon và browser pool tách theo URL chuẩn hóa để không dùng mã/phiên của website cũ. Lần Get đầu sau nâng cấp hoặc đổi URL có thể phải đọc HRM mới; không cần xóa dữ liệu hoặc migration SQL.
+- Chỉ thay URL được nếu web mới có cùng cấu trúc đăng nhập/menu master/timer. Nếu khác giao diện, cần chỉnh bộ đọc; cấu hình URL không tự thích nghi được.
+
+## Thay đổi 2.5.3 (lịch sử)
 
 - Thêm tùy chọn Nhớ tài khoản và mật khẩu, mặc định tắt. Chỉ ghi khi API đăng nhập thành công và phiên hợp lệ; lần đăng nhập lỗi không ghi đè thông tin đã lưu.
 - Tự điền lần mở sau hoặc khi đăng xuất/hết phiên, mật khẩu luôn được che. Không tự đăng nhập, không kéo dài phiên và không bỏ kiểm tra quyền.

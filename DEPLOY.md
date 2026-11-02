@@ -1,3 +1,15 @@
+# Cập nhật v2.5.4 — HRM_URL
+
+1. Thay source và deploy bản mới lên project Vercel hiện tại.
+2. Settings → Environment Variables → thêm `HRM_URL`, giá trị `https://hrm.ascvn.com.vn/HeThong` (hoặc URL HTTPS của HRM mới có cùng giao diện).
+3. Chọn Production/Preview/Development phù hợp, lưu và Redeploy deployment để nhận cấu hình mới.
+4. Cập nhật `HRM_USERNAME` / `HRM_PASSWORD` nếu website mới sử dụng tài khoản khác. Giữ nguyên các biến app/Neon khác.
+5. Đăng nhập app và Get để kiểm tra. Cache và browser cũ không dùng lại cho URL khác. Không cần SQL từ v2.5.3.
+
+URL phải đầy đủ đường dẫn, không query/hash/userinfo. Thiếu biến dùng URL cũ; có biến nhưng rỗng/sai sẽ báo NOT_CONFIGURED. Không hỗ trợ website khác cấu trúc chỉ bằng đổi URL. Không đổi HRM_URL thành URL app Master Password trên Vercel: đây là địa chỉ website nguồn lấy master.
+
+---
+
 # Deploy Master Password v2.5.2
 
 ## Nâng cấp từ 2.5.0/2.5.1

@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectMaster,readMasterFromHrm,optimizeHrmPage,prepareHrmRuntime,prepareHrmReader} from './lib/hrm-browser.mjs';
 
-function makePage({blocked=false,loginFails=false,popupState="absent",masterVisible=false,hoverOpens=true}={}) {
+function makePage({blocked=false,loginFails=false,popupState="absent",masterVisible=false,hoverOpens=true,home="https://hrm.ascvn.com.vn/HeThong"}={}) {
   let evaluations=0;const actions=[],waits=[];
   const profile='.dropdown-user > a.dropdown-toggle';
   const page={
     async setRequestInterception(){},on(){},
-    setDefaultTimeout(){},setDefaultNavigationTimeout(){},async goto(url){actions.push('goto');assert.equal(url,'https://hrm.ascvn.com.vn/HeThong');},
-    url:()=> 'https://hrm.ascvn.com.vn/HeThong',
+    setDefaultTimeout(){},setDefaultNavigationTimeout(){},async goto(url){actions.push('goto');assert.equal(url,home);},
+    url:()=>home,
     async evaluate(){evaluations++;if(evaluations===1||evaluations===2)return blocked;if(evaluations===3){actions.push('clearClipboard');return;}
       actions.push('readMaster');return {password:'TEST-ONLY',seconds:90};},
     async $(s){if(s==='input[name="UserName"]')return {};if(s==='a.gen-pass')return {boundingBox:async()=>({width:100,height:20}),isVisible:async()=>masterVisible};if(s==='#popupAddUpdatePassword #close'&&popupState!=='absent')return {isVisible:async()=>popupState==='visible',click:async()=>actions.push('closeNotice')};return null;},
@@ -202,4 +202,12 @@ test('warm HRM browser keeps the ordinary login session while pages close after 
   assert.equal(launches,1);assert.equal(logins,1);assert.equal(closedPages,2);assert.equal(closedBrowsers,0);
   loggedIn=false;await readMasterFromHrm(env,options);assert.equal(logins,2);assert.equal(launches,1);
  }finally{await pool.clear();}assert.equal(closedBrowsers,1);
+});
+
+test('custom HRM target is used for navigation, origin checks and clipboard permissions',async()=>{
+ const home='https://hrm-new.example/Portal/HeThong';const {page}=makePage({home});let permissionsOrigin;
+ const browser={defaultBrowserContext:()=>({overridePermissions:async(o)=>{permissionsOrigin=o;}}),newPage:async()=>page,close:async()=>{}};
+ const result=await readMasterFromHrm({HRM_URL:home,LOCAL_CHROME_PATH:'/test'},
+  {loadPuppeteer:async()=>({default:{launch:async()=>browser}})});
+ assert.equal(permissionsOrigin,'https://hrm-new.example');assert.ok(result.password);
 });
